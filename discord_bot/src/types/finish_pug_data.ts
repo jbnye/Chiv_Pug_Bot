@@ -1,7 +1,13 @@
-import crypto from 'crypto';
+
 
 export type finish_pug_backend_props_type = {
     winner: number,
-    uuid: crypto.UUID,
-    user_requested: string,
+    pug_id: string,
+    user_requested: {
+        id: string;
+        username: string;
+        discriminator: string;
+        globalName: string | null;
+    };
+    date: Date,
 } 

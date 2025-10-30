@@ -5,7 +5,7 @@ import pool from "./db";
     await pool.query(`
       CREATE TABLE IF NOT EXISTS players (
         id SERIAL PRIMARY KEY,
-        discord_id BIGINT UNIQUE,
+        discord_id TEXT UNIQUE,
         discord_username TEXT,
         discord_tag TEXT,
         mmr INT DEFAULT 1500,
@@ -18,19 +18,22 @@ import pool from "./db";
         is_trusted BOOLEAN DEFAULT FALSE
       );
     `);
+
     await pool.query(`
       DO $$ BEGIN
         CREATE TYPE command_action AS ENUM ('created', 'finished', 'canceled', 'reverted', 'swap');
       EXCEPTION
         WHEN duplicate_object THEN null;
       END $$;
+
       CREATE TABLE IF NOT EXISTS commands (
         id SERIAL PRIMARY KEY,
-        discord_id BIGINT REFERENCES players(discord_id),
+        discord_id TEXT,
         discord_username TEXT,
         pug_token TEXT,
         action command_action NOT NULL,
         timestamp TIMESTAMP DEFAULT NOW()
+      );
     `);
 
     await pool.query(`
@@ -72,7 +75,7 @@ import pool from "./db";
 
     console.log("Tables initialized successfully!");
   } catch (error) {
-    console.error(" Error creating table or custom type:", error);
+    console.error("Error creating tables:", error);
   } finally {
     await pool.end();
   }

@@ -1,29 +1,18 @@
-import { Client, Collection, Events, ChatInputCommandInteraction, GatewayIntentBits, MessageFlags, REST, Routes } from "discord.js";
-import { ChivClient } from "./types/client"; 
-import { connectRedisAndLoad } from "./redis";
-import fs from 'fs';
-import path from 'path';
+import { 
+  Collection, Events, ChatInputCommandInteraction, GatewayIntentBits, Interaction 
+} from "discord.js";
+import fs from "fs";
+import path from "path";
 import dotenv from "dotenv";
-import { connect } from "http2";
+import { ChivClient } from "./types/client";
+import { connectRedisAndLoad } from "./redis";
+
 dotenv.config();
 
-// const client = new Client({
-//   intents: [
-//     GatewayIntentBits.Guilds,
-//     GatewayIntentBits.GuildMessages,
-//     GatewayIntentBits.MessageContent,
-//     GatewayIntentBits.GuildMembers,
-//   ],
-// });
 const client = new ChivClient();
-client.commands = new Collection();
+client.commands = new Collection<string, any>();
 
-client.once(Events.ClientReady, (readyClient) => {
-	console.log(`Ready! Logged in as ${readyClient.user.tag}`);
-});
-client.login(process.env.DISCORD_TOKEN);
-
-
+// Load commands
 (async () => {
   const commandsPath = path.join(__dirname, "commands");
   const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith(".ts"));
@@ -34,85 +23,74 @@ client.login(process.env.DISCORD_TOKEN);
   }
 })();
 
-(async () =>  (
-    await connectRedisAndLoad()
-))();
+(async () => {
+  await connectRedisAndLoad();
+})();
 
+// Client ready
+client.once(Events.ClientReady, (readyClient) => {
+  console.log(`Ready! Logged in as ${readyClient.user.tag}`);
+});
+
+// Simple message handler
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
-
   if (message.content.startsWith("!ping")) {
     await message.reply("pong");
   }
 });
 
-client.on(Events.InteractionCreate, async interaction => {
+// AUTOCOMPLETE HANDLER
+client.on(Events.InteractionCreate, async (interaction: Interaction) => {
   if (!interaction.isAutocomplete()) return;
-  
+
   if (interaction.commandName === "create_pug") {
     const focused = interaction.options.getFocused().toLowerCase();
     const members = await interaction.guild!.members.fetch();
 
     const filtered = members
-      .filter(m => m.user.username.toLowerCase().includes(focused))
-      .first(25) 
-      .map(m => ({ name: m.user.username, value: m.user.id }));
-    //console.log(members)
+      .filter((m) => m.user.username.toLowerCase().includes(focused))
+      .first(25)
+      .map((m) => ({ name: m.user.username, value: m.user.id }));
 
     await interaction.respond(filtered);
   }
 });
 
-client.on(Events.InteractionCreate, async (interaction) => {
-	if (!interaction.isChatInputCommand()) return;
-  const client = getChivClient(interaction);
-  const command = client.commands.get(interaction.commandName);
+// CHAT INPUT COMMAND HANDLER
+client.on(Events.InteractionCreate, async (interaction: Interaction) => {
+  if (!interaction.isChatInputCommand()) return;
 
-	if (!command) {
-		console.error(`No command matching ${interaction.commandName} was found.`);
-		return;
-	}
+  const chivClient = interaction.client as ChivClient;
+  const command = chivClient.commands.get(interaction.commandName);
 
-	try {
-		await command.execute(interaction);
-	} catch (error) {
-		console.error(error);
-		if (interaction.replied || interaction.deferred) {
-			await interaction.followUp({
-				content: 'There was an error while executing this command!',
-				flags: MessageFlags.Ephemeral,
-			});
-		} else {
-			await interaction.reply({
-				content: 'There was an error while executing this command!',
-				flags: MessageFlags.Ephemeral,
-			});
-		}
-	}
+  if (!command) {
+    console.error(`No command matching ${interaction.commandName} was found.`);
+    return;
+  }
+
+  try {
+    // Only defer if not already deferred or replied
+    if (!interaction.deferred && !interaction.replied) {
+      await interaction.deferReply({ flags: 64 }); 
+    }
+
+    await command.execute(interaction as ChatInputCommandInteraction);
+  } catch (error) {
+    console.error("Error executing command:", error);
+
+    if (!interaction.deferred && !interaction.replied) {
+      await interaction.reply({
+        content: "There was an error while executing this command.",
+        flags: 64,
+      });
+    } else {
+      await interaction.editReply({
+        content: "There was an error while executing this command.",
+      });
+    }
+  }
 });
 
-
-function getChivClient(interaction: ChatInputCommandInteraction): ChivClient {
-  return interaction.client as ChivClient;
-}
-
-
-// client.on("interactionCreate", async (interaction) => {
-//     if(!interaction.isChatInputCommand()) return;
-
-//     if(interaction.commandName === "create_pug") {
-//         const token = Math.random().toString(36).substring(2,8).toUpperCase();
-
-//         await interaction.reply(`Pug created token: ${token}. \nPlease reply with captains.`);
-//         try{
-//             await axios.post(`${process.env.BACKEND_URL}/create`, {
-//                 token,
-//                 createBy: interaction.user.id,
-//             })
-//         } catch(error){
-//             console.error(error);
-//             await interaction.followUp("Failed to create pug in backend.");
-//         }
-//     }
-// })
+client.login(process.env.DISCORD_TOKEN);
 
