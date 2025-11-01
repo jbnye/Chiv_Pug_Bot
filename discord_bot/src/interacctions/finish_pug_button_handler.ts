@@ -1,33 +1,47 @@
-import { ButtonInteraction  } from "discord.js";
-import { update_mmr_after_finish } from "../utils/update_mmr_after_finish";
+import { StringSelectMenuInteraction } from "discord.js";
+import { finish_pug_backend } from "../utils/finish_pug_backend";
 
+export async function handleFinishPugSelect(interaction: StringSelectMenuInteraction) {
+  try {
+    // Defer reply; ephemeral is still valid in runtime, TS may warn
+    await interaction.deferReply({ ephemeral: true });
 
-export async function finish_pug_button(interaction: ButtonInteraction ) {
-  if (!interaction.isButton()) return;
+    const pug_id = interaction.values[0];
+    if (!pug_id) throw new Error("No PUG selected.");
 
-  const [prefix, pug_id, team] = interaction.customId.split("_");
-  if (prefix !== "finish") return;
+    const winner = 1; // Placeholder winner
 
-  const winner_team = parseInt(team, 10) as 1 | 2;
+    const data = {
+      pug_id,
+      date: new Date().toISOString(),
+      winner: winner as 1 | 2,
+      user_requested: {
+        id: interaction.user.id,
+        username: interaction.user.username,
+        discriminator: interaction.user.discriminator ?? "",
+        globalName: interaction.user.globalName ?? null,
+      },
+    };
 
-  await interaction.deferReply({ ephemeral: true });
+    const result = await finish_pug_backend({ data });
 
-  const result = await update_mmr_after_finish({
-    pug_id,
-    winner_team,
-    verified_by: {
-      id: interaction.user.id,
-      username: interaction.user.username,
-    },
-  });
+    if (!result.success) {
+      await interaction.editReply({ content: `❌ Failed to finish PUG: ${result.error || "Unknown error"}` });
+      return;
+    }
 
-  if (result.success) {
     await interaction.editReply({
-      content: `PUG **${pug_id}** marked as finished!\nWinner: Team ${winner_team}.`,
+      content: `✅ PUG **${pug_id}** marked as finished! Team ${winner} wins.`,
     });
-  } else {
-    await interaction.editReply({
-      content: `Failed to finish PUG: ${result.error || "unknown error"}`,
-    });
+
+  } catch (error) {
+    console.error("Error handling finish_pug select:", error);
+
+    // Only edit reply since we already deferred
+    try {
+      await interaction.editReply({ content: "❌ Failed to finish PUG due to an internal error." });
+    } catch (e) {
+      console.error("Also failed to edit reply:", e);
+    }
   }
 }

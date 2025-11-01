@@ -7,12 +7,16 @@ interface UpdateMMRAfterFinishProps {
   verified_by: { id: string; username: string };
 }
 
-export async function update_mmr_after_finish({pug_id, winner_team, verified_by, }: UpdateMMRAfterFinishProps) {
+export async function update_mmr_after_finish({
+  pug_id,
+  winner_team,
+  verified_by,
+}: UpdateMMRAfterFinishProps) {
   const key = `pug:${pug_id}`;
   const redisData = await redisClient.get(key);
 
   if (!redisData) {
-    console.error(`No Redis data found for ${key}`);
+    console.error(`❌ No Redis data found for ${key}`);
     return { success: false, error: "PUG not found in Redis" };
   }
 
@@ -23,7 +27,7 @@ export async function update_mmr_after_finish({pug_id, winner_team, verified_by,
   try {
     await db.query("BEGIN");
 
-    // 1️⃣ Ensure all players exist in the `players` table
+    // 1️⃣ Ensure all players exist in `players` table
     const playerMap = new Map<string, number>(); // discord_id → player_id
 
     for (const player of allPlayers) {
@@ -50,7 +54,20 @@ export async function update_mmr_after_finish({pug_id, winner_team, verified_by,
       playerMap.set(player.id, player_id);
     }
 
-    // 2️⃣ Create or find this pug in SQL `pugs` table
+    // 2️⃣ Ensure verifier exists (even if they didn’t play)
+    let verified_by_player_id = playerMap.get(verified_by.id) ?? null;
+
+    if (!verified_by_player_id) {
+      const insertVerifier = await db.query(
+        `INSERT INTO players (discord_id, discord_username, mmr)
+         VALUES ($1, $2, 1500)
+         RETURNING id`,
+        [verified_by.id, verified_by.username]
+      );
+      verified_by_player_id = insertVerifier.rows[0].id;
+    }
+
+    // 3️⃣ Create or find this pug in SQL `pugs` table
     const pugRes = await db.query(
       `SELECT pug_id FROM pugs WHERE token = $1`,
       [pug_id]
@@ -74,21 +91,23 @@ export async function update_mmr_after_finish({pug_id, winner_team, verified_by,
       pug_sql_id = pugRes.rows[0].pug_id;
     }
 
-    // 3️⃣ Calculate MMR updates
-    const mmrChange = 25; // Simple system, can replace with formula later
+    // 4️⃣ Calculate MMR updates
+    const mmrChange = 25; // simple flat system for now
     const winningTeam = winner_team === 1 ? pug.team1 : pug.team2;
     const losingTeam = winner_team === 1 ? pug.team2 : pug.team1;
+    const winningTeamNum = winner_team;
+    const losingTeamNum = winner_team === 1 ? 2 : 1;
 
     for (const player of winningTeam) {
       const player_id = playerMap.get(player.id);
-      const mmrBeforeRes = await db.query(
+      const { rows } = await db.query(
         `SELECT mmr FROM players WHERE id = $1`,
         [player_id]
       );
-      const mmrBefore = mmrBeforeRes.rows[0].mmr;
+      const mmrBefore = rows[0].mmr;
       const mmrAfter = mmrBefore + mmrChange;
 
-      // Update players table
+      // Update player record
       await db.query(
         `UPDATE players
          SET wins = wins + 1, mmr = $1, last_match_played = NOW()
@@ -96,14 +115,21 @@ export async function update_mmr_after_finish({pug_id, winner_team, verified_by,
         [mmrAfter, player_id]
       );
 
-      // Insert into pug_players
+      // Record in pug_players
       await db.query(
         `INSERT INTO pug_players (pug_id, player_id, team_number, is_captain, mmr_before, mmr_after)
          VALUES ($1, $2, $3, $4, $5, $6)`,
-        [pug_sql_id, player_id, 1, player.id === pug.captain1.id, mmrBefore, mmrAfter]
+        [
+          pug_sql_id,
+          player_id,
+          winningTeamNum,
+          player.id === pug.captain1.id || player.id === pug.captain2.id,
+          mmrBefore,
+          mmrAfter,
+        ]
       );
 
-      // Insert into mmr_history
+      // Record in mmr_history
       await db.query(
         `INSERT INTO mmr_history (player_id, pug_id, old_mmr, new_mmr, change)
          VALUES ($1, $2, $3, $4, $5)`,
@@ -113,11 +139,11 @@ export async function update_mmr_after_finish({pug_id, winner_team, verified_by,
 
     for (const player of losingTeam) {
       const player_id = playerMap.get(player.id);
-      const mmrBeforeRes = await db.query(
+      const { rows } = await db.query(
         `SELECT mmr FROM players WHERE id = $1`,
         [player_id]
       );
-      const mmrBefore = mmrBeforeRes.rows[0].mmr;
+      const mmrBefore = rows[0].mmr;
       const mmrAfter = mmrBefore - mmrChange;
 
       await db.query(
@@ -130,7 +156,14 @@ export async function update_mmr_after_finish({pug_id, winner_team, verified_by,
       await db.query(
         `INSERT INTO pug_players (pug_id, player_id, team_number, is_captain, mmr_before, mmr_after)
          VALUES ($1, $2, $3, $4, $5, $6)`,
-        [pug_sql_id, player_id, 2, player.id === pug.captain2.id, mmrBefore, mmrAfter]
+        [
+          pug_sql_id,
+          player_id,
+          losingTeamNum,
+          player.id === pug.captain1.id || player.id === pug.captain2.id,
+          mmrBefore,
+          mmrAfter,
+        ]
       );
 
       await db.query(
@@ -140,9 +173,7 @@ export async function update_mmr_after_finish({pug_id, winner_team, verified_by,
       );
     }
 
-    // 4️⃣ Update the pug entry with verification info
-    const verified_by_player_id = playerMap.get(verified_by.id) ?? null;
-
+    // 5️⃣ Update pug verification info
     await db.query(
       `UPDATE pugs
        SET winner_team = $1,
@@ -153,11 +184,15 @@ export async function update_mmr_after_finish({pug_id, winner_team, verified_by,
     );
 
     await db.query("COMMIT");
-    console.log(`MMR and pug updates completed for ${pug_id}`);
+
+    // 6️⃣ Remove from Redis (cleanup finished pug)
+    await redisClient.del(key);
+
+    console.log(`✅ PUG ${pug_id} finalized: Team ${winner_team} wins. MMR updated.`);
     return { success: true };
   } catch (error) {
     await db.query("ROLLBACK");
-    console.error("Error during MMR update:", error);
+    console.error("❌ Error during MMR update:", error);
     return { success: false, error };
   } finally {
     db.release();

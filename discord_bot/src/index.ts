@@ -1,13 +1,13 @@
+import dotenv from "dotenv";
+dotenv.config();
 import { 
   Collection, Events, ChatInputCommandInteraction, GatewayIntentBits, Interaction 
 } from "discord.js";
+import { handleFinishPugSelect } from "./interacctions/finish_pug_button_handler";
 import fs from "fs";
 import path from "path";
-import dotenv from "dotenv";
 import { ChivClient } from "./types/client";
 import { connectRedisAndLoad } from "./redis";
-
-dotenv.config();
 
 const client = new ChivClient();
 client.commands = new Collection<string, any>();
@@ -27,7 +27,6 @@ client.commands = new Collection<string, any>();
   await connectRedisAndLoad();
 })();
 
-// Client ready
 client.once(Events.ClientReady, (readyClient) => {
   console.log(`Ready! Logged in as ${readyClient.user.tag}`);
 });
@@ -40,57 +39,55 @@ client.on("messageCreate", async (message) => {
   }
 });
 
-// AUTOCOMPLETE HANDLER
 client.on(Events.InteractionCreate, async (interaction: Interaction) => {
-  if (!interaction.isAutocomplete()) return;
-
-  if (interaction.commandName === "create_pug") {
-    const focused = interaction.options.getFocused().toLowerCase();
-    const members = await interaction.guild!.members.fetch();
-
-    const filtered = members
-      .filter((m) => m.user.username.toLowerCase().includes(focused))
-      .first(25)
-      .map((m) => ({ name: m.user.username, value: m.user.id }));
-
-    await interaction.respond(filtered);
-  }
-});
-
-// CHAT INPUT COMMAND HANDLER
-client.on(Events.InteractionCreate, async (interaction: Interaction) => {
-  if (!interaction.isChatInputCommand()) return;
-
-  const chivClient = interaction.client as ChivClient;
-  const command = chivClient.commands.get(interaction.commandName);
-
-  if (!command) {
-    console.error(`No command matching ${interaction.commandName} was found.`);
-    return;
-  }
-
   try {
-    // Only defer if not already deferred or replied
-    if (!interaction.deferred && !interaction.replied) {
-      await interaction.deferReply({ flags: 64 }); 
+    // Autocomplete
+    if (interaction.isAutocomplete()) {
+      if (interaction.commandName === "create_pug") {
+        const focused = interaction.options.getFocused().toLowerCase();
+        const members = await interaction.guild!.members.fetch();
+        const filtered = members
+          .filter((m) => m.user.username.toLowerCase().includes(focused))
+          .first(25)
+          .map((m) => ({ name: m.user.username, value: m.user.id }));
+        await interaction.respond(filtered);
+      }
+      return; // done for autocomplete
     }
 
-    await command.execute(interaction as ChatInputCommandInteraction);
-  } catch (error) {
-    console.error("Error executing command:", error);
+    // Chat input commands
+    if (interaction.isChatInputCommand()) {
+      const command = client.commands.get(interaction.commandName);
+      if (!command) return;
 
-    if (!interaction.deferred && !interaction.replied) {
-      await interaction.reply({
-        content: "There was an error while executing this command.",
-        flags: 64,
-      });
-    } else {
-      await interaction.editReply({
-        content: "There was an error while executing this command.",
-      });
+      await command.execute(interaction as ChatInputCommandInteraction);
+      return;
+    }
+
+    // Select menus
+    if (interaction.isStringSelectMenu()) {
+      if (interaction.customId === "finish_pug_select") {
+        await handleFinishPugSelect(interaction);
+      }
+      return;
+    }
+
+  } catch (error) {
+    console.error("Error handling interaction:", error);
+
+    // Only reply/followUp for interactions that support it
+    if (
+      interaction.isChatInputCommand() ||
+      interaction.isButton() ||
+      interaction.isStringSelectMenu()
+    ) {
+      if (interaction.deferred || interaction.replied) {
+        await interaction.followUp({ content: "Error handling interaction.", ephemeral: true });
+      } else {
+        await interaction.reply({ content: "Error handling interaction.", ephemeral: true });
+      }
     }
   }
 });
 
 client.login(process.env.DISCORD_TOKEN);
-

@@ -2,46 +2,29 @@ import { SlashCommandBuilder, ChatInputCommandInteraction } from "discord.js";
 import { create_pug_backend } from "../utils/create_pug_backend";
 import { v4 as uuidv4 } from "uuid";
 
-interface create_pug_response {
-  success: boolean;
-  key?: string;
-  error?: string;
-}
-
-interface user_requested {
-  id: string;
-  username: string;
-  discriminator: string;
-  globalName: string | null;
-}
-
 export default {
   data: new SlashCommandBuilder()
     .setName("create_pug")
-    .setDescription("Create a new PUG by tagging players for each team.")
-    .addStringOption((option) =>
-      option
-        .setName("team1")
-        .setDescription("Mention 5 players for Team 1 (e.g. @user1 @user2 ...)")
-        .setRequired(true)
+    .setDescription("Create a new PUG by selecting captains and team members.")
+    .addUserOption(opt =>
+      opt.setName("captain1").setDescription("Select Captain 1").setRequired(true)
     )
-    .addStringOption((option) =>
-      option
-        .setName("team2")
-        .setDescription("Mention 5 players for Team 2 (e.g. @user1 @user2 ...)")
-        .setRequired(true)
+    .addUserOption(opt =>
+      opt.setName("captain2").setDescription("Select Captain 2").setRequired(true)
+    )
+    .addStringOption(opt =>
+      opt.setName("team1").setDescription("Mention Team 1 players (@user1 @user2 …)").setRequired(true)
+    )
+    .addStringOption(opt =>
+      opt.setName("team2").setDescription("Mention Team 2 players (@user1 @user2 …)").setRequired(true)
     ),
 
   async execute(interaction: ChatInputCommandInteraction) {
-    // ✅ Only defer once
-    if (!interaction.deferred && !interaction.replied) {
-      await interaction.deferReply({ flags: 64 });
-    }
-
     try {
-      const user_requested: user_requested = interaction.user;
-      const team1 = interaction.options.getString("team1", true);
-      const team2 = interaction.options.getString("team2", true);
+      const captain1 = interaction.options.getUser("captain1", true);
+      const captain2 = interaction.options.getUser("captain2", true);
+      const team1Raw = interaction.options.getString("team1", true);
+      const team2Raw = interaction.options.getString("team2", true);
 
       const parseMentions = (text: string) => {
         const regex = /<@!?(\d+)>/g;
@@ -51,62 +34,49 @@ export default {
         return ids;
       };
 
-      const team1Ids = parseMentions(team1);
-      const team2Ids = parseMentions(team2);
+      const guild = interaction.guild;
+      if (!guild) return;
 
-      const team1_members = await Promise.all(
-        team1Ids.map(async (id) => {
-          const member = await interaction.guild!.members.fetch(id);
+      const fetchMembers = async (ids: string[]) =>
+        Promise.all(ids.map(async id => {
+          const member = await guild.members.fetch(id);
           return {
             id: member.user.id,
             username: member.user.username,
             displayName: member.displayName,
-            globalName: member.user.globalName,
+            globalName: member.user.globalName ?? null,
           };
-        })
-      );
+        }));
 
-      const team2_members = await Promise.all(
-        team2Ids.map(async (id) => {
-          const member = await interaction.guild!.members.fetch(id);
-          return {
-            id: member.user.id,
-            username: member.user.username,
-            displayName: member.displayName,
-            globalName: member.user.globalName,
-          };
-        })
-      );
+      const team1 = await fetchMembers(parseMentions(team1Raw));
+      const team2 = await fetchMembers(parseMentions(team2Raw));
 
       const pug_id = uuidv4();
-      const data = {
-        pug_id,
-        date: new Date(),
-        team1: team1_members,
-        team2: team2_members,
-        user_requested,
-      };
+      const result = await create_pug_backend({
+        data: {
+          captain1: { id: captain1.id, username: captain1.username },
+          captain2: { id: captain2.id, username: captain2.username },
+          team1,
+          team2,
+          pug_id,
+          date: new Date(),
+          user_requested: {
+            id: interaction.user.id,
+            username: interaction.user.username,
+            discriminator: interaction.user.discriminator,
+            globalName: interaction.user.globalName ?? null,
+          },
+        },
+      });
 
-      const result: create_pug_response = await create_pug_backend({ data });
-
-      // ✅ Always edit reply, never reply again
-      await interaction.editReply({
+      await interaction.reply({
         content: result.success
-          ? `✅ **PUG Created!**\n\n**Team 1:** ${team1Ids
-              .map((id) => `<@${id}>`)
-              .join(", ")}\n**Team 2:** ${team2Ids
-              .map((id) => `<@${id}>`)
-              .join(", ")}\n\nToken: \`${pug_id}\``
+          ? `✅ **PUG Created!**\n**Captain 1:** <@${captain1.id}>\n**Captain 2:** <@${captain2.id}>\n**Team 1:** ${team1.map(p => `<@${p.id}>`).join(", ")}\n**Team 2:** ${team2.map(p => `<@${p.id}>`).join(", ")}`
           : `❌ Failed to create PUG: ${result.error || "unknown error"}`,
       });
     } catch (error) {
-      console.error("Error executing /create_pug:", error);
-
-      if (!interaction.replied) {
-        await interaction.editReply({
-          content: "⚠️ An unexpected error occurred while creating the PUG.",
-        });
-      }
+      console.error("Error creating PUG:", error);
+      await interaction.reply({ content: "⚠️ Something went wrong creating the PUG.", ephemeral: true });
     }
   },
 };

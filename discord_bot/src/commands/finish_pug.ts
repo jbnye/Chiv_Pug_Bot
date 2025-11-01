@@ -1,47 +1,74 @@
-import { SlashCommandBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder, ChatInputCommandInteraction } from "discord.js";
+import {
+  ActionRowBuilder,
+  StringSelectMenuBuilder,
+  StringSelectMenuOptionBuilder,
+  SlashCommandBuilder,
+  ChatInputCommandInteraction,
+  ComponentType,
+} from "discord.js";
 import { redisClient } from "../redis";
 
 export default {
   data: new SlashCommandBuilder()
     .setName("finish_pug")
-    .setDescription("Finish a PUG and select the winning team.")
-    .addStringOption(opt =>
-      opt
-        .setName("pug_id")
-        .setDescription("The PUG token (from creation)")
-        .setRequired(true)
-    ),
+    .setDescription("Select a PUG to finish."),
 
   async execute(interaction: ChatInputCommandInteraction) {
-    const pug_id = interaction.options.getString("pug_id", true);
-    const redisKey = `pug:${pug_id}`;
-    const data = await redisClient.get(redisKey);
+    try {
+      const keys = await redisClient.keys("pug:*");
 
-    if (!data) {
-      await interaction.reply({ content: `No PUG found for ID: ${pug_id}`, ephemeral: true });
-      return;
+      if (keys.length === 0) {
+        await interaction.reply({
+          content: "There are no active PUGs in Redis.",
+          flags: 64, 
+        });
+        return;
+      }
+
+      const pugs = await Promise.all(
+        keys.map(async (key) => {
+          const pugData = await redisClient.get(key);
+          return pugData ? JSON.parse(pugData) : null;
+        })
+      );
+
+      const validPugs = pugs.filter(Boolean);
+
+      const options = validPugs.map((pug) => {
+        const estTime = new Date(pug.date).toLocaleString("en-US", {
+          timeZone: "America/New_York",
+          month: "short",
+          day: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+          hour12: true,
+        });
+
+        const label = `${pug.captain1.username} vs ${pug.captain2.username}`;
+        const desc = `${estTime} EST`;
+        return new StringSelectMenuOptionBuilder()
+          .setLabel(label)
+          .setDescription(desc)
+          .setValue(pug.pug_id);
+      });
+
+      const selectMenu = new StringSelectMenuBuilder()
+        .setCustomId("finish_pug_select")
+        .setPlaceholder("Select a PUG to finish")
+        .addOptions(options.slice(0, 10)); 
+
+      const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(selectMenu);
+
+      await interaction.reply({
+        content: "Select the PUG you’d like to finish:",
+        components: [row],
+      });
+    } catch (error) {
+      console.error("Error in /finish_pug:", error);
+      await interaction.reply({
+        content: "Failed to load PUGs.",
+        flags: 64,
+      });
     }
-
-    const pug = JSON.parse(data);
-    const captain1Name = pug.captain1?.username || "Captain 1";
-    const captain2Name = pug.captain2?.username || "Captain 2";
-
-    const button1 = new ButtonBuilder()
-      .setCustomId(`finish_${pug_id}_1`)
-      .setLabel(`${captain1Name}'s Team Won`)
-      .setStyle(ButtonStyle.Success);
-
-    const button2 = new ButtonBuilder()
-      .setCustomId(`finish_${pug_id}_2`)
-      .setLabel(`${captain2Name}'s Team Won`)
-      .setStyle(ButtonStyle.Danger);
-
-    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(button1, button2);
-
-    await interaction.reply({
-      content: `Who won this PUG?\n**${captain1Name}** vs **${captain2Name}**`,
-      components: [row],
-      ephemeral: true,
-    });
   },
 };

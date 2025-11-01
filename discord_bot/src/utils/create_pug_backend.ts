@@ -44,7 +44,7 @@ export const create_pug_backend = async ({data}: create_pug_backend_Props) => {
       return { success: true, key };
     } catch (error: any) {
       console.error("Failed to save Command in database:", error);
-      return { success: false, error: error.message || "Database error" }; // ✅ Added return
+      return { success: false, error: error.message || "Database error" }; // 
     } finally {
       db_client.release();
     }
