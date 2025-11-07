@@ -76,31 +76,32 @@ export default {
       // Generate a unique temporary PUG ID
       const tempPugId = uuidv4();
 
+      // ✅ Include the user who created the PUG
+      const tempPugData = {
+        pug_id: tempPugId,
+        team1,
+        team2,
+        captains: { team1: null, team2: null },
+        user_requested: {
+          id: interaction.user.id,
+          username: interaction.user.username,
+          discriminator: interaction.user.discriminator ?? "",
+          globalName: interaction.user.globalName ?? null,
+        },
+      };
+
       // Save to Redis
-      await redisClient.set(
-        `temp_pug:${tempPugId}`,
-        JSON.stringify({
-          team1,
-          team2,
-          captains: { team1: null, team2: null },
-          created_by: {
-            id: interaction.user.id,
-            username: interaction.user.username,
-            globalName: interaction.user.globalName ?? null,
-          },
-        }),
-        { EX: 600 } // expire after 10 minutes
-      );
+      await redisClient.set(`temp_pug:${tempPugId}`, JSON.stringify(tempPugData), { EX: 600 });
+
+      console.log("✅ Saved temp PUG to Redis:", tempPugData);
 
       // Build select menus
       const team1Select = new StringSelectMenuBuilder()
-        // .setCustomId(`pug:${tempPugId}:select_captain_team1`)
         .setCustomId(`select_captain_team1_${tempPugId}`)
         .setPlaceholder("Select Captain for Team 1")
         .addOptions(team1.map(p => ({ label: p.username, value: p.id })));
 
       const team2Select = new StringSelectMenuBuilder()
-        // .setCustomId(`pug:${tempPugId}:select_captain_team2`)
         .setCustomId(`select_captain_team2_${tempPugId}`)
         .setPlaceholder("Select Captain for Team 2")
         .addOptions(team2.map(p => ({ label: p.username, value: p.id })));

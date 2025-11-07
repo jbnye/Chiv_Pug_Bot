@@ -30,7 +30,12 @@ export async function handleConfirmCaptains(interaction: ButtonInteraction) {
 
   if (t1Index > 0) [team1WithCaptain[0], team1WithCaptain[t1Index]] = [team1WithCaptain[t1Index], team1WithCaptain[0]];
   if (t2Index > 0) [team2WithCaptain[0], team2WithCaptain[t2Index]] = [team2WithCaptain[t2Index], team2WithCaptain[0]];
-
+  console.log("🧩 DEBUG PUG DATA:", JSON.stringify({
+    pug_id,
+    team1: team1WithCaptain,
+    team2: team2WithCaptain,
+    user_requested: tempPug.user_requested,
+  }, null, 2));
   const result = await create_pug_backend({
     data: {
       pug_id,

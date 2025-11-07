@@ -20,6 +20,12 @@ export const create_pug_backend = async ({data}: create_pug_backend_Props) => {
     };
 
     await redisClient.set(key, JSON.stringify(pugRecord), { EX: 86400 });
+    
+    const timestamp = Date.now();
+    // Add to a sorted set for ordering
+    await redisClient.zAdd("pugs:by_date", [
+      { score: timestamp, value: data.pug_id,}
+    ]);
     console.log(`Created PUG saved to Redis as ${key}`);
 
     const db_client = await pool.connect();

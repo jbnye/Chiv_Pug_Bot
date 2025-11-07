@@ -85,13 +85,14 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
       return;
     }
 
-    if (interaction.isButton()) {
-  const id = interaction.customId;
+  if (interaction.isButton()) {
+    const id = interaction.customId;
 
-  if (id.startsWith("confirm_captains_")) {
-    await handleConfirmCaptains(interaction);
+    if (id.includes(":confirm_captains")) {
+      console.log("🟩 Confirm captains button clicked");
+      await handleConfirmCaptains(interaction);
+    }
   }
-}
 
   } catch (error) {
     console.error("Error handling interaction:", error);
