@@ -1,31 +1,44 @@
-import { SlashCommandBuilder, ChatInputCommandInteraction } from "discord.js";
-import { create_pug_backend } from "../utils/create_pug_backend";
+import {
+  SlashCommandBuilder,
+  ChatInputCommandInteraction,
+  ActionRowBuilder,
+  StringSelectMenuBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+} from "discord.js";
+import { redisClient } from "../redis";
 import { v4 as uuidv4 } from "uuid";
 
 export default {
   data: new SlashCommandBuilder()
     .setName("create_pug")
-    .setDescription("Create a new PUG by selecting captains and team members.")
-    .addUserOption(opt =>
-      opt.setName("captain1").setDescription("Select Captain 1").setRequired(true)
-    )
-    .addUserOption(opt =>
-      opt.setName("captain2").setDescription("Select Captain 2").setRequired(true)
+    .setDescription("Create a new PUG by selecting players for each team.")
+    .addStringOption(opt =>
+      opt
+        .setName("team1")
+        .setDescription("Mention players for Team 1 (e.g., @user1 @user2 @user3)")
+        .setRequired(true)
     )
     .addStringOption(opt =>
-      opt.setName("team1").setDescription("Mention Team 1 players (@user1 @user2 …)").setRequired(true)
-    )
-    .addStringOption(opt =>
-      opt.setName("team2").setDescription("Mention Team 2 players (@user1 @user2 …)").setRequired(true)
+      opt
+        .setName("team2")
+        .setDescription("Mention players for Team 2 (e.g., @user4 @user5 @user6)")
+        .setRequired(true)
     ),
 
   async execute(interaction: ChatInputCommandInteraction) {
     try {
-      const captain1 = interaction.options.getUser("captain1", true);
-      const captain2 = interaction.options.getUser("captain2", true);
+      const guild = interaction.guild;
+      if (!guild)
+        return interaction.reply({
+          content: "⚠️ This command must be used in a server.",
+          ephemeral: true,
+        });
+
       const team1Raw = interaction.options.getString("team1", true);
       const team2Raw = interaction.options.getString("team2", true);
 
+      // Parse user mentions into Discord IDs
       const parseMentions = (text: string) => {
         const regex = /<@!?(\d+)>/g;
         const ids: string[] = [];
@@ -34,49 +47,94 @@ export default {
         return ids;
       };
 
-      const guild = interaction.guild;
-      if (!guild) return;
+      const team1Ids = parseMentions(team1Raw);
+      const team2Ids = parseMentions(team2Raw);
 
+      if (!team1Ids.length || !team2Ids.length)
+        return interaction.reply({
+          content: "⚠️ You must mention at least one player in each team.",
+          ephemeral: true,
+        });
+
+      // Fetch basic member info for each player
       const fetchMembers = async (ids: string[]) =>
-        Promise.all(ids.map(async id => {
-          const member = await guild.members.fetch(id);
-          return {
-            id: member.user.id,
-            username: member.user.username,
-            displayName: member.displayName,
-            globalName: member.user.globalName ?? null,
-          };
-        }));
+        Promise.all(
+          ids.map(async id => {
+            const member = await guild.members.fetch(id);
+            return {
+              id: member.user.id,
+              username: member.user.username,
+              displayName: member.displayName,
+              globalName: member.user.globalName ?? null,
+            };
+          })
+        );
 
-      const team1 = await fetchMembers(parseMentions(team1Raw));
-      const team2 = await fetchMembers(parseMentions(team2Raw));
+      const team1 = await fetchMembers(team1Ids);
+      const team2 = await fetchMembers(team2Ids);
 
-      const pug_id = uuidv4();
-      const result = await create_pug_backend({
-        data: {
-          captain1: { id: captain1.id, username: captain1.username },
-          captain2: { id: captain2.id, username: captain2.username },
+      // Generate a unique temporary PUG ID
+      const tempPugId = uuidv4();
+
+      // Save to Redis
+      await redisClient.set(
+        `temp_pug:${tempPugId}`,
+        JSON.stringify({
           team1,
           team2,
-          pug_id,
-          date: new Date(),
-          user_requested: {
+          captains: { team1: null, team2: null },
+          created_by: {
             id: interaction.user.id,
             username: interaction.user.username,
-            discriminator: interaction.user.discriminator,
             globalName: interaction.user.globalName ?? null,
           },
-        },
-      });
+        }),
+        { EX: 600 } // expire after 10 minutes
+      );
 
+      // Build select menus
+      const team1Select = new StringSelectMenuBuilder()
+        // .setCustomId(`pug:${tempPugId}:select_captain_team1`)
+        .setCustomId(`select_captain_team1_${tempPugId}`)
+        .setPlaceholder("Select Captain for Team 1")
+        .addOptions(team1.map(p => ({ label: p.username, value: p.id })));
+
+      const team2Select = new StringSelectMenuBuilder()
+        // .setCustomId(`pug:${tempPugId}:select_captain_team2`)
+        .setCustomId(`select_captain_team2_${tempPugId}`)
+        .setPlaceholder("Select Captain for Team 2")
+        .addOptions(team2.map(p => ({ label: p.username, value: p.id })));
+
+      const row1 = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(team1Select);
+      const row2 = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(team2Select);
+
+      // Confirm button
+      const confirmButton = new ButtonBuilder()
+        .setCustomId(`pug:${tempPugId}:confirm_captains`)
+        .setLabel("✅ Confirm Captains")
+        .setStyle(ButtonStyle.Success);
+
+      const rowConfirm = new ActionRowBuilder<ButtonBuilder>().addComponents(confirmButton);
+
+      // Reply with menus and confirm button
       await interaction.reply({
-        content: result.success
-          ? `✅ **PUG Created!**\n**Captain 1:** <@${captain1.id}>\n**Captain 2:** <@${captain2.id}>\n**Team 1:** ${team1.map(p => `<@${p.id}>`).join(", ")}\n**Team 2:** ${team2.map(p => `<@${p.id}>`).join(", ")}`
-          : `❌ Failed to create PUG: ${result.error || "unknown error"}`,
+        content: `✅ **PUG Created!**\nSelect captains for each team, then confirm.`,
+        components: [row1, row2, rowConfirm],
+        ephemeral: true,
       });
     } catch (error) {
-      console.error("Error creating PUG:", error);
-      await interaction.reply({ content: "⚠️ Something went wrong creating the PUG.", ephemeral: true });
+      console.error("Error in /create_pug:", error);
+      if (interaction.deferred || interaction.replied) {
+        await interaction.followUp({
+          content: "⚠️ Something went wrong creating the PUG.",
+          ephemeral: true,
+        });
+      } else {
+        await interaction.reply({
+          content: "⚠️ Something went wrong creating the PUG.",
+          ephemeral: true,
+        });
+      }
     }
   },
 };

@@ -3,11 +3,13 @@ dotenv.config();
 import { 
   Collection, Events, ChatInputCommandInteraction, GatewayIntentBits, Interaction 
 } from "discord.js";
-import { handleFinishPugSelect } from "./interacctions/finish_pug_button_handler";
+import { handleFinishPugSelect } from "./interacctions/finish_pug_select";
 import fs from "fs";
 import path from "path";
 import { ChivClient } from "./types/client";
 import { connectRedisAndLoad } from "./redis";
+import { handleCaptainSelection } from "./interacctions/create_pug_select_captains"
+import {handleConfirmCaptains} from "./interacctions/create_pug_confirm_button";
 
 const client = new ChivClient();
 client.commands = new Collection<string, any>();
@@ -41,6 +43,12 @@ client.on("messageCreate", async (message) => {
 
 client.on(Events.InteractionCreate, async (interaction: Interaction) => {
   try {
+    console.log("\n🟢 Interaction triggered:", {
+      type: interaction.type,
+      isStringSelect: interaction.isStringSelectMenu?.(),
+      customId: (interaction as any).customId,
+      commandName: (interaction as any).commandName,
+    });
     // Autocomplete
     if (interaction.isAutocomplete()) {
       if (interaction.commandName === "create_pug") {
@@ -64,13 +72,26 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
       return;
     }
 
-    // Select menus
     if (interaction.isStringSelectMenu()) {
-      if (interaction.customId === "finish_pug_select") {
+      const id = interaction.customId;
+
+      if (id.startsWith("select_captain_")) {
+        console.log("Selected captain itneraction");
+        await handleCaptainSelection(interaction);
+      } else if (id === "finish_pug_select") {
         await handleFinishPugSelect(interaction);
       }
+
       return;
     }
+
+    if (interaction.isButton()) {
+  const id = interaction.customId;
+
+  if (id.startsWith("confirm_captains_")) {
+    await handleConfirmCaptains(interaction);
+  }
+}
 
   } catch (error) {
     console.error("Error handling interaction:", error);
