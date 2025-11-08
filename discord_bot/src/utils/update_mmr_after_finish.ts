@@ -185,8 +185,8 @@ export async function update_mmr_after_finish({
 
     await db.query("COMMIT");
 
-    // 6️⃣ Remove from Redis (cleanup finished pug)
-    await redisClient.del(key);
+    // // 6️⃣ Remove from Redis (cleanup finished pug)
+    // await redisClient.del(key);
 
     console.log(`✅ PUG ${pug_id} finalized: Team ${winner_team} wins. MMR updated.`);
     return { success: true };

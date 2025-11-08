@@ -60,7 +60,7 @@ export default {
       const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(selectMenu);
 
       await interaction.reply({
-        content: "Select the PUG you’d like to finish:",
+        content: "Select the PUG you'd like to finish:",
         components: [row],
       });
     } catch (error) {
