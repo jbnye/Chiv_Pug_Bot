@@ -9,7 +9,7 @@ import path from "path";
 import { ChivClient } from "./types/client";
 import { connectRedisAndLoad } from "./redis";
 import { handleCaptainSelection } from "./interacctions/create_pug_select_captains"
-// import {handleConfirmCaptains} from "./interacctions/create_pug_confirm_button";
+import {handleConfirmCaptains} from "./interacctions/create_pug_confirm_button";
 import {handleFinishPugButton} from "./interacctions/finish_pug_buttons";
 
 const client = new ChivClient();
@@ -89,13 +89,13 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
   if (interaction.isButton()) {
     const id = interaction.customId;
 
-    // if (id.includes(":confirm_captains")) {
-    //   console.log("🟩 Confirm captains button clicked");
-    //   await handleConfirmCaptains(interaction);
-    // }
-          if (interaction.customId.startsWith("finish_team1_") || interaction.customId.startsWith("finish_team2_")) {
-        await handleFinishPugButton(interaction);
-      }
+    if (id.includes(":confirm_captains")) {
+      console.log("🟩 Confirm captains button clicked");
+      await handleConfirmCaptains(interaction);
+    }
+    if (interaction.customId.startsWith("finish_team1_") || interaction.customId.startsWith("finish_team2_")) {
+      await handleFinishPugButton(interaction);
+    }
   }
 
   } catch (error) {

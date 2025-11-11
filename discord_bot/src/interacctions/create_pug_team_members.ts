@@ -1,7 +1,6 @@
 import { StringSelectMenuInteraction } from "discord.js";
 import { redisClient } from "../redis";
-import { create_pug_backend } from "../utils/create_pug_backend";
-import { v4 as uuidv4 } from "uuid";
+import { validatePugTeams } from "../utils/create_pug_team_validation";
 
 interface TeamMember {
   id: string;
@@ -25,33 +24,25 @@ interface TempPugData {
 export async function handleTeamMemberSelection(interaction: StringSelectMenuInteraction) {
   try {
     console.log("\n========== handleTeamMemberSelection START ==========");
-    console.log("customId:", interaction.customId);
-    console.log("values:", interaction.values);
-
     await interaction.deferReply({ ephemeral: true });
 
-    // 1️⃣ Extract the temp pug ID from the customId
-    // Example customId: "pug:<uuid>:team1_select_members"
+    if (!interaction.customId) {
+      console.error("❌ Interaction has no customId!");
+      await interaction.editReply({ content: "❌ Invalid interaction. Try again." });
+      return;
+    }
+
     const parts = interaction.customId.split(":");
-    const tempPugId = parts[1]; // second part = UUID
+    const tempPugId = parts[1];
     const team = interaction.customId.includes("team1") ? "team1" : "team2";
 
     const tempKey = `temp_pug:${tempPugId}`;
-    console.log("Redis key:", tempKey);
-
-    // 2️⃣ Load or initialize temporary pug data
     const tempRaw = await redisClient.get(tempKey);
-    let tempPug: TempPugData;
 
-    if (tempRaw) {
-      tempPug = JSON.parse(tempRaw);
-      console.log("✅ Loaded existing temp pug data");
-    } else {
-      tempPug = { team1: [], team2: [], captains: { team1: null, team2: null } };
-      console.log("🆕 Initialized new temp pug data");
-    }
+    let tempPug: TempPugData = tempRaw
+      ? JSON.parse(tempRaw)
+      : { team1: [], team2: [], captains: { team1: null, team2: null } };
 
-    // 3️⃣ Save who created the PUG if missing
     if (!tempPug.user_requested) {
       tempPug.user_requested = {
         id: interaction.user.id,
@@ -59,11 +50,12 @@ export async function handleTeamMemberSelection(interaction: StringSelectMenuInt
         discriminator: interaction.user.discriminator ?? "",
         globalName: interaction.user.globalName ?? null,
       };
-      console.log("🧍 Set user_requested:", tempPug.user_requested.username);
     }
 
-    // 4️⃣ Build team member list from selected IDs
+    // Fetch selected members
     const selectedIds = interaction.values;
+    console.log("🟢 Selected IDs:", selectedIds);
+
     const teamMembers: TeamMember[] = (
       await Promise.all(
         selectedIds.map(async (id) => {
@@ -75,13 +67,15 @@ export async function handleTeamMemberSelection(interaction: StringSelectMenuInt
               displayName: member.displayName,
               globalName: member.user.globalName ?? null,
             };
-          } catch (err) {
-            console.error(`⚠️ Failed to fetch member ${id}:`, err);
+          } catch {
+            console.warn(`⚠️ Could not fetch member with ID: ${id}`);
             return null;
           }
         })
       )
     ).filter((m): m is TeamMember => !!m);
+
+    console.log(`🟢 Team ${team} members fetched:`, teamMembers.map(m => m.username));
 
     if (!teamMembers.length) {
       await interaction.editReply({ content: `⚠️ No valid members selected for ${team}.` });
@@ -89,13 +83,31 @@ export async function handleTeamMemberSelection(interaction: StringSelectMenuInt
     }
 
     tempPug[team] = teamMembers;
-    console.log(`✅ Saved ${team} members:`, teamMembers.map((m) => m.username));
 
-    // 5️⃣ Save updated pug back to Redis
+    // Save updated PUG to Redis
     await redisClient.set(tempKey, JSON.stringify(tempPug), { EX: 600 });
-    console.log("💾 Saved to Redis");
+    console.log("✅ Saved temp PUG to Redis:", tempPug);
 
-    // 6️⃣ If both teams are selected, move on or finalize
+    // Debug log before validation
+    console.log("🟢 Running validatePugTeams with:", {
+      team1Count: tempPug.team1?.length,
+      team2Count: tempPug.team2?.length,
+      currentTeam: team,
+    });
+
+    // Run validation
+    const hasError = await validatePugTeams(
+      interaction,
+      {
+        team1: tempPug.team1?.map(m => m.id) || [],
+        team2: tempPug.team2?.map(m => m.id) || [],
+      },
+      team // pass current team to check uneven teams
+    );
+
+    if (hasError) return; // stop execution if validation failed
+
+    // Next steps: prompt for captain selection if both teams are ready
     if (tempPug.team1?.length && tempPug.team2?.length) {
       await interaction.editReply({
         content: `✅ Team members selected for both teams!\nNow choose captains using the select menus.`,
@@ -109,12 +121,8 @@ export async function handleTeamMemberSelection(interaction: StringSelectMenuInt
     console.log("========== handleTeamMemberSelection END ==========\n");
   } catch (error) {
     console.error("💥 Error in handleTeamMemberSelection:", error);
-
     if (!interaction.replied && !interaction.deferred) {
-      await interaction.reply({
-        content: "❌ Failed to handle team member selection. Try again.",
-        ephemeral: true,
-      });
+      await interaction.reply({ content: "❌ Failed to handle team member selection. Try again.", ephemeral: true });
     } else {
       await interaction.editReply({ content: "❌ Failed to handle team member selection." });
     }

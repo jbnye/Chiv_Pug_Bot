@@ -4,18 +4,19 @@ import pool from "./db";
   try {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS players (
-        id SERIAL PRIMARY KEY,
-        discord_id TEXT UNIQUE,
-        discord_username TEXT,
-        discord_tag TEXT,
-        mmr INT DEFAULT 1500,
-        wins INT DEFAULT 0,
-        losses INT DEFAULT 0,
-        captain_wins INT DEFAULT 0,
-        captain_losses INT DEFAULT 0,
-        created_at TIMESTAMP DEFAULT NOW(),
-        last_match_played TIMESTAMP,
-        is_trusted BOOLEAN DEFAULT FALSE
+          id SERIAL PRIMARY KEY,
+          discord_id TEXT UNIQUE,
+          discord_username TEXT,
+          discord_tag TEXT,
+          mu FLOAT DEFAULT 25,          -- TrueSkill rating
+          sigma FLOAT DEFAULT 8.333,    -- TrueSkill uncertainty
+          wins INT DEFAULT 0,
+          losses INT DEFAULT 0,
+          captain_wins INT DEFAULT 0,
+          captain_losses INT DEFAULT 0,
+          created_at TIMESTAMP DEFAULT NOW(),
+          last_match_played TIMESTAMP,
+          is_trusted BOOLEAN DEFAULT FALSE
       );
     `);
 
@@ -51,25 +52,29 @@ import pool from "./db";
 
     await pool.query(`
       CREATE TABLE IF NOT EXISTS pug_players (
-        id SERIAL PRIMARY KEY,
-        pug_id INT REFERENCES pugs(pug_id),
-        player_id INT REFERENCES players(id),
-        team_number INT,
-        is_captain BOOLEAN DEFAULT FALSE,
-        mmr_before INT,
-        mmr_after INT
+          id SERIAL PRIMARY KEY,
+          pug_id INT REFERENCES pugs(pug_id),
+          player_id INT REFERENCES players(id),
+          team_number INT,
+          is_captain BOOLEAN DEFAULT FALSE,
+          mu_before FLOAT,
+          sigma_before FLOAT,
+          mu_after FLOAT,
+          sigma_after FLOAT
       );
     `);
 
     await pool.query(`
       CREATE TABLE IF NOT EXISTS mmr_history (
-        id SERIAL PRIMARY KEY,
-        player_id INT REFERENCES players(id),
-        pug_id INT REFERENCES pugs(pug_id),
-        old_mmr INT,
-        new_mmr INT,
-        change INT,
-        timestamp TIMESTAMP DEFAULT NOW()
+          id SERIAL PRIMARY KEY,
+          player_id INT REFERENCES players(id),
+          pug_id INT REFERENCES pugs(pug_id),
+          old_mu FLOAT,
+          old_sigma FLOAT,
+          new_mu FLOAT,
+          new_sigma FLOAT,
+          delta FLOAT, -- optional, new_mu - old_mu
+          timestamp TIMESTAMP DEFAULT NOW()
       );
     `);
 

@@ -9,7 +9,7 @@ interface FinishPugBackendProps {
 
 /**
  * Handles finishing a PUG:
- *  - Updates all player MMR + PUG info in DB
+ *  - Calls MMR update and collects final deltas
  *  - Moves PUG from active → finished Redis key
  *  - Logs command to SQL
  */
@@ -19,26 +19,24 @@ export const finish_pug_backend = async ({ data }: FinishPugBackendProps) => {
   try {
     const pugKey = `pug:${data.pug_id}`;
     const finishedKey = `finished_pugs:${data.pug_id}`;
+
     // 1️⃣ Retrieve PUG data from Redis
     const pugData = await redisClient.get(pugKey);
-    console.log("Redis data:", pugData);
     if (!pugData) {
-      console.error(`No active PUG found for ${pugKey}`);
+      console.error(`❌ No active PUG found for ${pugKey}`);
       return { success: false, error: "PUG not found in Redis" };
     }
 
     const pug = JSON.parse(pugData);
 
-    console.log("Fetching Redis key for MMR update:", `pug:${data.pug_id}`);
-    
-    // 2️⃣ Update MMR before moving PUG
+    // 2️⃣ Update MMR and get structured deltas
     const mmrResult = await update_mmr_after_finish({
-    pug_id: data.pug_id,
-    winner_team: data.winner as 1 | 2,
-    verified_by: {
+      pug_id: data.pug_id,
+      winner_team: data.winner as 1 | 2,
+      verified_by: {
         id: data.user_requested.id,
         username: data.user_requested.username,
-    },
+      },
     });
 
     if (!mmrResult.success) {
@@ -46,9 +44,9 @@ export const finish_pug_backend = async ({ data }: FinishPugBackendProps) => {
       return { success: false, error: "MMR update failed" };
     }
 
-    console.log(`✅ MMR updated for PUG ${data.pug_id}`);
+    const { results: mmrChanges } = mmrResult; // Array of { playerId, oldMu, oldSigma, newMu, newSigma, delta, team }
 
-    // 3️⃣ Move PUG to finished_pugs
+    // 3️⃣ Move PUG to finished_pugs in Redis
     const finishedPugData = {
       ...pug,
       winner: data.winner,
@@ -58,12 +56,13 @@ export const finish_pug_backend = async ({ data }: FinishPugBackendProps) => {
         discriminator: data.user_requested.discriminator ?? "",
         globalName: data.user_requested.globalName ?? null,
       },
+      mmr_changes: mmrChanges,
     };
 
     await redisClient.set(finishedKey, JSON.stringify(finishedPugData), { EX: 86400 });
     await redisClient.del(pugKey);
 
-    console.log(`PUG moved from ${pugKey} → ${finishedKey}`);
+    console.log(`📦 PUG moved from ${pugKey} → ${finishedKey}`);
 
     // 4️⃣ Log the command in SQL
     await db.query(
@@ -74,9 +73,33 @@ export const finish_pug_backend = async ({ data }: FinishPugBackendProps) => {
       [data.user_requested.id, data.user_requested.username, data.pug_id, "finished"]
     );
 
-    console.log("✅ Finished PUG command logged to SQL.");
+    console.log("🧾 Finished PUG command logged to SQL.");
 
-    return { success: true };
+    // 5️⃣ Prepare summary for Discord using TrueSkill
+    const formatTeam = (teamNum: 1 | 2) =>
+      mmrChanges!
+        .filter((c) => c.team === teamNum)
+        .map(
+          (c) =>
+            `• <@${c.playerId}> — ${c.oldMu.toFixed(1)} ±${c.oldSigma.toFixed(1)} → ${c.newMu.toFixed(
+              1
+            )} ±${c.newSigma.toFixed(1)} (≈ ${c.newMMR}) ${
+              c.delta > 0 ? `🟢 (+${c.delta})` : `🔴 (${c.delta})`
+            }`
+        )
+        .join("\n") || "_No players found_";
+
+    const summaryMessage = `✅ **PUG Finished!**
+🏆 **Winner:** Team ${data.winner}
+
+**Team 1**
+${formatTeam(1)}
+
+**Team 2**
+${formatTeam(2)}
+`;
+
+    return { success: true, mmrChanges, summaryMessage };
   } catch (error) {
     console.error("Error in finish_pug_backend:", error);
     return { success: false, error };
