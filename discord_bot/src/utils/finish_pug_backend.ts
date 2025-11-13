@@ -58,6 +58,10 @@ export const finish_pug_backend = async ({ data }: FinishPugBackendProps) => {
       },
       mmr_changes: mmrChanges,
     };
+    await redisClient.zAdd("finished_pugs:by_date", {
+      score: Date.now(),
+      value: data.pug_id,
+    });
 
     await redisClient.set(finishedKey, JSON.stringify(finishedPugData), { EX: 86400 });
     await redisClient.del(pugKey);

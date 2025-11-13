@@ -7,7 +7,7 @@ import { handleFinishPugSelect } from "./interacctions/finish_pug_select";
 import fs from "fs";
 import path from "path";
 import { ChivClient } from "./types/client";
-import { connectRedisAndLoad } from "./redis";
+import { connectRedisAndLoad, redisClient } from "./redis";
 import { handleCaptainSelection } from "./interacctions/create_pug_select_captains"
 import {handleConfirmCaptains} from "./interacctions/create_pug_confirm_button";
 import {handleFinishPugButton} from "./interacctions/finish_pug_buttons";
@@ -81,6 +81,23 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
         await handleCaptainSelection(interaction);
       } else if (id === "finish_pug_select") {
         await handleFinishPugSelect(interaction);
+      }
+      else if (id === "cancel_pug_select") {
+        const pugId = interaction.values[0];
+
+        try {
+          await redisClient.del(`pug:${pugId}`);
+          await interaction.update({
+            content: `🗑️ Successfully canceled PUG **${pugId}**.`,
+            components: [],
+          });
+        } catch (err) {
+          console.error("Error canceling pug:", err);
+          await interaction.update({
+            content: `❌ Failed to cancel PUG **${pugId}**.`,
+            components: [],
+          });
+        }
       }
 
       return;

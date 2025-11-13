@@ -9,14 +9,14 @@ interface UpdateMMRAfterFinishProps {
 }
 
 interface MMRChange {
-  playerId: string;       // Discord ID
+  playerId: string;
   oldMu: number;
   oldSigma: number;
   newMu: number;
   newSigma: number;
-  oldMMR: number;         // ≈ conservative MMR before
-  newMMR: number;         // ≈ conservative MMR after
-  delta: number;          // newMMR - oldMMR
+  oldMMR: number;
+  newMMR: number;
+  delta: number;
   team: 1 | 2;
 }
 
@@ -26,17 +26,20 @@ export async function update_mmr_after_finish({
   verified_by,
 }: UpdateMMRAfterFinishProps) {
   const key = `pug:${pug_id}`;
-  const redisData = await redisClient.get(key);
+  let redisData = await redisClient.get(key);
 
   if (!redisData) {
-    console.error(`❌ No Redis data found for ${key}`);
+    redisData = await redisClient.get(`finished_pugs:${pug_id}`);
+  }
+
+  if (!redisData) {
+    console.error(`❌ No Redis data found for pug:${pug_id} or finished_pugs:${pug_id}`);
     return { success: false, error: "PUG not found in Redis" };
   }
 
   const pug = JSON.parse(redisData);
   const allPlayers = [...pug.team1, ...pug.team2];
   const db = await pool.connect();
-
   const mmrResults: MMRChange[] = [];
 
   try {
@@ -45,24 +48,24 @@ export async function update_mmr_after_finish({
     const playerMap = new Map<string, number>(); // discord_id → player_id
     const playerRatings = new Map<string, Rating>(); // discord_id → Rating
 
-    // 1️⃣ Ensure all players exist with TrueSkill
+    // 1️⃣ Ensure all players exist with TrueSkill ratings
     for (const player of allPlayers) {
-      const res = await db.query(`SELECT id, ts_mu, ts_sigma FROM players WHERE discord_id = $1`, [player.id]);
+      const res = await db.query(`SELECT id, mu, sigma FROM players WHERE discord_id = $1`, [player.id]);
       let player_id: number;
       let rating: Rating;
 
       if (res.rows.length === 0) {
         const insertRes = await db.query(
-          `INSERT INTO players (discord_id, discord_username, ts_mu, ts_sigma)
-           VALUES ($1, $2, 25, 8.333)
+          `INSERT INTO players (discord_id, discord_username, mu, sigma)
+           VALUES ($1, $2, 25.0, 8.333)
            RETURNING id`,
           [player.id, player.username]
         );
         player_id = insertRes.rows[0].id;
-        rating = new Rating(25, 8.333);
+        rating = new Rating(25.0, 8.333);
       } else {
         player_id = res.rows[0].id;
-        rating = new Rating(res.rows[0].ts_mu ?? 25, res.rows[0].ts_sigma ?? 8.333);
+        rating = new Rating(res.rows[0].mu ?? 25.0, res.rows[0].sigma ?? 8.333);
       }
 
       playerMap.set(player.id, player_id);
@@ -73,8 +76,8 @@ export async function update_mmr_after_finish({
     let verified_by_player_id = playerMap.get(verified_by.id);
     if (!verified_by_player_id) {
       const insertVerifier = await db.query(
-        `INSERT INTO players (discord_id, discord_username, ts_mu, ts_sigma)
-         VALUES ($1, $2, 25, 8.333)
+        `INSERT INTO players (discord_id, discord_username, mu, sigma)
+         VALUES ($1, $2, 25.0, 8.333)
          RETURNING id`,
         [verified_by.id, verified_by.username]
       );
@@ -100,43 +103,74 @@ export async function update_mmr_after_finish({
     const tsTeam1 = pug.team1.map((p: any) => playerRatings.get(p.id)!);
     const tsTeam2 = pug.team2.map((p: any) => playerRatings.get(p.id)!);
 
-    // 5️⃣ Update TrueSkill based on winner
+    // 5️⃣ Rate based on winner
     const rankedTeams = winner_team === 1 ? [tsTeam1, tsTeam2] : [tsTeam2, tsTeam1];
     const newRatings = rate(rankedTeams);
 
-    const updateTeam = (team: any[], teamNum: 1 | 2, updatedRatings: Rating[]) => {
-      team.forEach((player, i) => {
+    // Helper for updating a single team
+    const updateTeam = async (team: any[], teamNum: 1 | 2, updatedRatings: Rating[]) => {
+      for (let i = 0; i < team.length; i++) {
+        const player = team[i];
         const player_id = playerMap.get(player.id)!;
         const oldRating = playerRatings.get(player.id)!;
         const newRating = updatedRatings[i];
+        const didWin = winner_team === teamNum;
 
         const oldMMR = Math.round(oldRating.mu - 3 * oldRating.sigma);
         const newMMR = Math.round(newRating.mu - 3 * newRating.sigma);
+        const mmrChange = newMMR - oldMMR;
 
-        db.query(
+        // 🧠 Update players table
+        await db.query(
           `UPDATE players
-           SET ts_mu = $1, ts_sigma = $2, last_match_played = NOW()
-           WHERE id = $3`,
-          [newRating.mu, newRating.sigma, player_id]
+           SET mu = $1,
+               sigma = $2,
+               wins = wins + $3,
+               losses = losses + $4,
+               last_match_played = NOW(),
+               updated_at = NOW()
+           WHERE id = $5`,
+          [newRating.mu, newRating.sigma, didWin ? 1 : 0, didWin ? 0 : 1, player_id]
         );
 
-        db.query(
-          `INSERT INTO pug_players (pug_id, player_id, team_number, is_captain, mmr_before, mmr_after)
-           VALUES ($1, $2, $3, $4, $5, $6)`,
+        // 🧾 Insert into pug_players
+        await db.query(
+          `INSERT INTO pug_players 
+             (pug_id, player_id, team_number, is_captain, 
+              trueskill_before, trueskill_after, confidence_before, confidence_after, 
+              won, mmr_change)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
           [
             pug_sql_id,
             player_id,
             teamNum,
             player.id === pug.captain1.id || player.id === pug.captain2.id,
-            oldMMR,
-            newMMR,
+            oldRating.mu,
+            newRating.mu,
+            oldRating.sigma,
+            newRating.sigma,
+            didWin,
+            mmrChange,
           ]
         );
 
-        db.query(
-          `INSERT INTO mmr_history (player_id, pug_id, old_mmr, new_mmr, change)
-           VALUES ($1, $2, $3, $4, $5)`,
-          [player_id, pug_sql_id, oldMMR, newMMR, newMMR - oldMMR]
+        // 📈 Insert MMR history (optional audit trail)
+        await db.query(
+          `INSERT INTO mmr_history 
+             (player_id, pug_id, old_mmr, new_mmr, change, 
+              mu_before, mu_after, sigma_before, sigma_after)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          [
+            player_id,
+            pug_sql_id,
+            oldMMR,
+            newMMR,
+            mmrChange,
+            oldRating.mu,
+            newRating.mu,
+            oldRating.sigma,
+            newRating.sigma,
+          ]
         );
 
         mmrResults.push({
@@ -147,16 +181,17 @@ export async function update_mmr_after_finish({
           newSigma: newRating.sigma,
           oldMMR,
           newMMR,
-          delta: newMMR - oldMMR,
+          delta: mmrChange,
           team: teamNum,
         });
-      });
+      }
     };
 
-    updateTeam(pug.team1, 1, winner_team === 1 ? newRatings[0] : newRatings[1]);
-    updateTeam(pug.team2, 2, winner_team === 1 ? newRatings[1] : newRatings[0]);
+    // Apply updates
+    await updateTeam(pug.team1, 1, winner_team === 1 ? newRatings[0] : newRatings[1]);
+    await updateTeam(pug.team2, 2, winner_team === 1 ? newRatings[1] : newRatings[0]);
 
-    // 6️⃣ Update pug verification info
+    // 6️⃣ Update pug record
     await db.query(
       `UPDATE pugs
        SET winner_team = $1,
@@ -167,7 +202,6 @@ export async function update_mmr_after_finish({
     );
 
     await db.query("COMMIT");
-
     return { success: true, results: mmrResults };
   } catch (error) {
     await db.query("ROLLBACK");

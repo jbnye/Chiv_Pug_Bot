@@ -66,19 +66,26 @@ export async function handleConfirmCaptains(interaction: ButtonInteraction) {
   const team1Text = buildTeamText(team1WithCaptain);
   const team2Text = buildTeamText(team2WithCaptain);
 
+  const captain1 = [...team1WithCaptain, ...team2WithCaptain].find(
+    (p) => p.id === tempPug.captains.team1
+  );
+  const captain2 = [...team1WithCaptain, ...team2WithCaptain].find(
+    (p) => p.id === tempPug.captains.team2
+  );
+
   // 4️⃣ Update Discord interaction
   await interaction.update({
     content: `✅ **PUG created!**
 
-**Captain 1:** <@${tempPug.captains.team1}>
-**Captain 2:** <@${tempPug.captains.team2}>
-**Token:** \`${pug_id}\`
+  **Captain 1:** <@${tempPug.captains.team1}> (${captain1?.username || "Unknown"})
+  **Captain 2:** <@${tempPug.captains.team2}> (${captain2?.username || "Unknown"})
+  **Token:** \`${pug_id}\`
 
-🏅 **${tempPug.captains.team1}'s team**
-${team1Text}
+  **${captain1?.username || "Captain 1"}'s team**
+  ${team1Text}
 
-⚔️ **${tempPug.captains.team2}'s team**
-${team2Text}`,
+  **${captain2?.username || "Captain 2"}'s team**
+  ${team2Text}`,
     components: [],
   });
 

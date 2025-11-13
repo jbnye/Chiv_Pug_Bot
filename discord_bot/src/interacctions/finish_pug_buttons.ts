@@ -1,73 +1,67 @@
 import { ButtonInteraction } from "discord.js";
-import { finish_pug_backend } from "../utils/finish_pug_backend";
 import { update_mmr_after_finish } from "../utils/update_mmr_after_finish";
-import type { finish_pug_backend_props_type } from "../types/finish_pug_data";
+import { redisClient } from "../redis";
 
 export async function handleFinishPugButton(interaction: ButtonInteraction) {
   try {
-    // defer so Discord doesn't mark the interaction as failed
     await interaction.deferReply({ flags: 64 });
 
-    // customId expected format: like "finish_team1_pug:<uuid>" or "finish_team1_<uuid>"
-    // adjust parsing to match your format; this assumes something like "finish_team1_<pugId>"
-    const parts = interaction.customId.split("_");
-    // parts example: ["finish","team1","pug:ed3..."] or ["finish","team1","ed3..."]
-    const teamPart = parts[1];
-    let rawPugId = parts.slice(2).join("_"); // support extra underscores
-    // if you saved pug id with a "pug:" prefix somewhere, strip it here:
-    if (rawPugId.startsWith("pug:")) rawPugId = rawPugId.replace("pug:", "");
-    const pug_id = rawPugId;
+    const [_, teamWinner, pugId] = interaction.customId.split("_"); // finish_team1_<id>
+    const winnerTeam = teamWinner === "team1" ? 1 : 2;
 
-    const winnerNum = teamPart === "team1" ? 1 : 2;
-    // build a value that exactly matches your declared interface
-    const data: finish_pug_backend_props_type = {
-      pug_id,
-      date: new Date().toISOString(),
-      winner: winnerNum as 1 | 2,
-      user_requested: {
-        id: interaction.user.id,
-        username: interaction.user.username,
-        // optional fields from your interface — include them if available
-        discriminator: (interaction.user as any).discriminator ?? undefined,
-        globalName: (interaction.user as any).globalName ?? null,
-      },
-    };
+    const pugRaw = await redisClient.get(`pug:${pugId}`) || await redisClient.get(`finished_pugs:${pugId}`);
+    if (!pugRaw) {
+      await interaction.editReply({ content: "⚠️ PUG data not found." });
+      return;
+    }
 
-    // Call backend to move the PUG in Redis + log command
-    const result = await finish_pug_backend({ data });
+    const pugData = JSON.parse(pugRaw);
+
+    const result = await update_mmr_after_finish({
+      pug_id: pugId,
+      winner_team: winnerTeam,
+      verified_by: { id: interaction.user.id, username: interaction.user.username },
+    });
 
     if (!result.success) {
-      await interaction.editReply({
-        content: `❌ Failed to finish PUG: ${result.error ?? "Unknown error"}`,
-      });
+      await interaction.editReply({ content: "⚠️ MMR update failed." });
       return;
     }
 
-    // Update MMR + write to Postgres (this expects winner_team: 1|2)
-    const mmrResult = await update_mmr_after_finish({
-      pug_id: data.pug_id,
-      winner_team: data.winner,
-      verified_by: { id: data.user_requested.id, username: data.user_requested.username },
-    });
+    // --- Generate summary ---
+    const mmrData = result.results;
+    const team1Lines: string[] = [];
+    const team2Lines: string[] = [];
 
-    if (!mmrResult.success) {
-      console.error("MMR update failed:", mmrResult.error);
-      await interaction.editReply({
-        content: `⚠️ PUG marked finished in Redis but failed to update MMR.`,
-      });
-      return;
+    for (const player of mmrData!) {
+      const name = pugData.team1.concat(pugData.team2).find((p: any) => p.id === player.playerId)?.username ?? "Unknown";
+      const mu = player.newMu.toFixed(1);
+      const sigma = player.newSigma.toFixed(1);
+      const approx = Math.round(player.newMu - 3 * player.newSigma);
+      const delta = player.delta > 0 ? `+${player.delta}` : `${player.delta}`;
+
+      const line = `• @${name} — ${mu} ±${sigma} (≈ ${approx}) (${player.team === winnerTeam ? `Win: ${delta}` : `Loss: ${delta}`})`;
+
+      if (player.team === 1) team1Lines.push(line);
+      else team2Lines.push(line);
     }
 
-    await interaction.editReply({
-      content: `✅ You marked ${data.user_requested.username}’s team as the winner for PUG ${pug_id}.`,
-    });
+    const team1Name = pugData.captain1.username;
+    const team2Name = pugData.captain2.username;
+
+    const summary = [
+      `🏁 **${team1Name} vs ${team2Name}** — PUG **${pugId}**`,
+      "",
+      `**${team1Name}’s team**`,
+      ...team1Lines,
+      "",
+      `**${team2Name}’s team**`,
+      ...team2Lines,
+    ].join("\n");
+
+    await interaction.editReply({ content: summary });
   } catch (error) {
     console.error("Error handling finish_pug button:", error);
-    if (!interaction.replied) {
-      await interaction.reply({ content: "Failed to finish pug.", flags: 64 });
-    } else {
-      // we've already replied/deferred - try to followUp
-      try { await interaction.followUp({ content: "Failed to finish pug.", flags: 64 }); } catch {}
-    }
+    await interaction.editReply({ content: "❌ Failed to finish PUG." });
   }
 }

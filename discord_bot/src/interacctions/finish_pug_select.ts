@@ -8,15 +8,14 @@ import { redisClient } from "../redis";
 
 export async function handleFinishPugSelect(interaction: StringSelectMenuInteraction) {
   try {
-    // await interaction.deferReply({ ephemeral: true });
-    await interaction.deferReply({ flags: 64 }); // 64 = EPHEMERAL
+    await interaction.deferReply({ flags: 64 });
+
     const selectedPugId = interaction.values[0];
     if (!selectedPugId) {
       await interaction.editReply({ content: "⚠️ No PUG selected." });
       return;
     }
 
-    // 🧩 Load the PUG data from Redis
     const pugRaw = await redisClient.get(`pug:${selectedPugId}`);
     if (!pugRaw) {
       await interaction.editReply({ content: "⚠️ PUG not found in Redis." });
@@ -24,12 +23,19 @@ export async function handleFinishPugSelect(interaction: StringSelectMenuInterac
     }
 
     const pugData = JSON.parse(pugRaw);
-
-    // ✅ Extract captain names
     const team1Captain = pugData.team1?.[0]?.username ?? "Team 1";
     const team2Captain = pugData.team2?.[0]?.username ?? "Team 2";
 
-    // ✅ Create labeled buttons (include captain names in the customId)
+    const date = new Date();
+    const estDate = date.toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+      timeZone: "America/New_York",
+    });
+
     const team1Btn = new ButtonBuilder()
       .setCustomId(`finish_team1_${selectedPugId}`)
       .setLabel(`${team1Captain}'s Team Won`)
@@ -42,8 +48,16 @@ export async function handleFinishPugSelect(interaction: StringSelectMenuInterac
 
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(team1Btn, team2Btn);
 
+    const messageContent = `🏁 **Finish PUG Selection**
+
+${team1Captain} vs ${team2Captain}
+${estDate} EST
+**[PUG ID: ${selectedPugId}]**
+
+Pick the winning team below:`;
+
     await interaction.editReply({
-      content: `🏁 Finishing PUG **${selectedPugId}** — pick the winning team:`,
+      content: messageContent,
       components: [row],
     });
   } catch (error) {

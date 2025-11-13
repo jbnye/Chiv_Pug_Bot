@@ -29,10 +29,10 @@ export async function getPlayerMMRsWithStakes(
       if (res.rows.length === 0) {
         // Player not found — create default record
         await db.query(
-          `INSERT INTO players (discord_id, discord_username, mu, sigma, mmr)
-           VALUES ($1, $2, $3, $4, $5)
+          `INSERT INTO players (discord_id, discord_username, mu, sigma)
+           VALUES ($1, $2, $3, $4)
            ON CONFLICT (discord_id) DO NOTHING`,
-          [player.id, player.username, mu, sigma, Math.round(mu - 3 * sigma)]
+          [player.id, player.username, mu, sigma]
         );
       } else {
         mu = res.rows[0].mu;
@@ -57,38 +57,40 @@ export async function getPlayerMMRsWithStakes(
     );
 
     const results = [];
-
+    const [team1Win_t1New, team1Win_t2New] = rate([team1Ratings, team2Ratings], [1, 2]);
+    const [team2Win_t1New, team2Win_t2New] = rate([team1Ratings, team2Ratings], [2, 1]);
     // Calculate deltas for each player
-    for (const player of players) {
-      const rating = playerRatings[player.id];
-      const currentMMR = Math.round(rating.mu - 3 * rating.sigma);
 
-      const isTeam1 = team1.includes(player.id);
+  for (const player of players) {
+    const rating = playerRatings[player.id];
+    const currentMMR = Math.round(rating.mu - 3 * rating.sigma);
+    const isTeam1 = team1.includes(player.id);
 
-      const winRating = isTeam1
-        ? team1Win_newTeam1[team1.indexOf(player.id)]
-        : team1Win_newTeam2[team2.indexOf(player.id)];
+    // find player's new rating for both outcomes
+    const winRating = isTeam1
+      ? team1Win_t1New[team1.indexOf(player.id)]
+      : team2Win_t2New[team2.indexOf(player.id)];
 
-      const loseRating = isTeam1
-        ? team2Win_newTeam1[team1.indexOf(player.id)]
-        : team2Win_newTeam2[team2.indexOf(player.id)];
+    const loseRating = isTeam1
+      ? team2Win_t1New[team1.indexOf(player.id)]
+      : team1Win_t2New[team2.indexOf(player.id)];
 
-      const winMMR = Math.round(winRating.mu - 3 * winRating.sigma);
-      const loseMMR = Math.round(loseRating.mu - 3 * loseRating.sigma);
+    const winMMR = Math.round(winRating.mu - 3 * winRating.sigma);
+    const loseMMR = Math.round(loseRating.mu - 3 * loseRating.sigma);
 
-      const potentialWin = winMMR - currentMMR;
-      const potentialLoss = loseMMR - currentMMR;
+    const potentialWin = winMMR - currentMMR;
+    const potentialLoss = loseMMR - currentMMR;
 
-      results.push({
-        id: player.id,
-        username: player.username,
-        mu: rating.mu,
-        sigma: rating.sigma,
-        currentMMR,
-        potentialWin,
-        potentialLoss,
-      });
-    }
+    results.push({
+      id: player.id,
+      username: player.username,
+      mu: rating.mu,
+      sigma: rating.sigma,
+      currentMMR,
+      potentialWin,
+      potentialLoss,
+    });
+  }
 
     return results;
   } finally {
