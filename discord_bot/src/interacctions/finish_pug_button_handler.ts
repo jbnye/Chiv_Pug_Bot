@@ -9,7 +9,7 @@ export async function handleFinishPugSelect(interaction: StringSelectMenuInterac
     const pug_id = interaction.values[0];
     if (!pug_id) throw new Error("No PUG selected.");
 
-    const winner = 1; // Placeholder winner
+    const winner: 1 | 2 = 1;
 
     const data = {
       pug_id,

@@ -12,6 +12,7 @@ interface FinishPugBackendProps {
  *  - Calls MMR update and collects final deltas
  *  - Moves PUG from active → finished Redis key
  *  - Logs command to SQL
+ *  - Updates captain win/loss stats
  */
 export const finish_pug_backend = async ({ data }: FinishPugBackendProps) => {
   const db = await pool.connect();
@@ -44,7 +45,7 @@ export const finish_pug_backend = async ({ data }: FinishPugBackendProps) => {
       return { success: false, error: "MMR update failed" };
     }
 
-    const { results: mmrChanges } = mmrResult; // Array of { playerId, oldMu, oldSigma, newMu, newSigma, delta, team }
+    const { results: mmrChanges } = mmrResult;
 
     // 3️⃣ Move PUG to finished_pugs in Redis
     const finishedPugData = {
@@ -58,6 +59,7 @@ export const finish_pug_backend = async ({ data }: FinishPugBackendProps) => {
       },
       mmr_changes: mmrChanges,
     };
+
     await redisClient.zAdd("finished_pugs:by_date", {
       score: Date.now(),
       value: data.pug_id,
@@ -79,18 +81,17 @@ export const finish_pug_backend = async ({ data }: FinishPugBackendProps) => {
 
     console.log("🧾 Finished PUG command logged to SQL.");
 
-    // 5️⃣ Prepare summary for Discord using TrueSkill
+    // 5️⃣ Prepare summary for Discord
     const formatTeam = (teamNum: 1 | 2) =>
       mmrChanges!
         .filter((c) => c.team === teamNum)
-        .map(
-          (c) =>
-            `• <@${c.playerId}> — ${c.oldMu.toFixed(1)} ±${c.oldSigma.toFixed(1)} → ${c.newMu.toFixed(
-              1
-            )} ±${c.newSigma.toFixed(1)} (≈ ${c.newMMR}) ${
-              c.delta > 0 ? `🟢 (+${c.delta})` : `🔴 (${c.delta})`
-            }`
-        )
+        .map((c) => {
+          const oldMMR = Math.round(c.oldMu - 3 * c.oldSigma);
+          const newMMR = Math.round(c.newMu - 3 * c.newSigma);
+          const delta = newMMR - oldMMR;
+          const diff = delta >= 0 ? `🟢 (+${delta})` : `🔴 (${delta})`;
+          return `• <@${c.playerId}> — ${oldMMR} → ${newMMR} ${diff}`;
+        })
         .join("\n") || "_No players found_";
 
     const summaryMessage = `✅ **PUG Finished!**
@@ -103,9 +104,43 @@ ${formatTeam(1)}
 ${formatTeam(2)}
 `;
 
+    // 6️⃣ Update captain win/loss records
+    const { team1: captain1Id, team2: captain2Id } = pug.captains;
+    const winningCaptain = data.winner === 1 ? captain1Id : captain2Id;
+    const losingCaptain = data.winner === 1 ? captain2Id : captain1Id;
+
+    await db.query("BEGIN");
+
+    // Increment wins for winning captain
+    await db.query(
+      `
+      INSERT INTO players (discord_id, captain_wins, captain_losses)
+      VALUES ($1, 1, 0)
+      ON CONFLICT (discord_id)
+      DO UPDATE SET captain_wins = players.captain_wins + 1
+      `,
+      [winningCaptain]
+    );
+
+    // Increment losses for losing captain
+    await db.query(
+      `
+      INSERT INTO players (discord_id, captain_wins, captain_losses)
+      VALUES ($1, 0, 1)
+      ON CONFLICT (discord_id)
+      DO UPDATE SET captain_losses = players.captain_losses + 1
+      `,
+      [losingCaptain]
+    );
+
+    await db.query("COMMIT");
+
+    console.log(`📊 Updated captain stats: +1 win for ${winningCaptain}, +1 loss for ${losingCaptain}`);
+
     return { success: true, mmrChanges, summaryMessage };
   } catch (error) {
     console.error("Error in finish_pug_backend:", error);
+    await db.query("ROLLBACK");
     return { success: false, error };
   } finally {
     db.release();

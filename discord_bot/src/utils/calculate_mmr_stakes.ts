@@ -5,6 +5,7 @@ import { rate, Rating } from "ts-trueskill";
  * Get current TrueSkill (mu/sigma) for all players,
  * and calculate potential gain/loss for each player.
  */
+
 export async function getPlayerMMRsWithStakes(
   players: { id: string; username: string }[],
   team1: string[], // array of discord_ids
@@ -61,12 +62,16 @@ export async function getPlayerMMRsWithStakes(
     const [team2Win_t1New, team2Win_t2New] = rate([team1Ratings, team2Ratings], [2, 1]);
     // Calculate deltas for each player
 
+  const conservative = (mu: number, sigma: number) => Math.max(mu - 3 * sigma, 0);
+
   for (const player of players) {
     const rating = playerRatings[player.id];
-    const currentMMR = Math.round(rating.mu - 3 * rating.sigma);
     const isTeam1 = team1.includes(player.id);
 
-    // find player's new rating for both outcomes
+    // Current conservative MMR
+    const currentMMR = Math.round(conservative(rating.mu, rating.sigma));
+
+    // Find player's new rating for both outcomes
     const winRating = isTeam1
       ? team1Win_t1New[team1.indexOf(player.id)]
       : team2Win_t2New[team2.indexOf(player.id)];
@@ -75,8 +80,8 @@ export async function getPlayerMMRsWithStakes(
       ? team2Win_t1New[team1.indexOf(player.id)]
       : team1Win_t2New[team2.indexOf(player.id)];
 
-    const winMMR = Math.round(winRating.mu - 3 * winRating.sigma);
-    const loseMMR = Math.round(loseRating.mu - 3 * loseRating.sigma);
+    const winMMR = Math.round(conservative(winRating.mu, winRating.sigma));
+    const loseMMR = Math.round(conservative(loseRating.mu, loseRating.sigma));
 
     const potentialWin = winMMR - currentMMR;
     const potentialLoss = loseMMR - currentMMR;

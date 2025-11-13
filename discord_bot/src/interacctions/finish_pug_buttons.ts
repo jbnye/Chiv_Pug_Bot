@@ -1,67 +1,79 @@
-import { ButtonInteraction } from "discord.js";
-import { update_mmr_after_finish } from "../utils/update_mmr_after_finish";
+import { ButtonInteraction, EmbedBuilder } from "discord.js";
+import { finish_pug_backend } from "../utils/finish_pug_backend";
 import { redisClient } from "../redis";
 
 export async function handleFinishPugButton(interaction: ButtonInteraction) {
   try {
-    await interaction.deferReply({ flags: 64 });
+    await interaction.deferReply({ ephemeral: false });
 
     const [_, teamWinner, pugId] = interaction.customId.split("_"); // finish_team1_<id>
-    const winnerTeam = teamWinner === "team1" ? 1 : 2;
+    const winnerTeam = (teamWinner === "team1" ? 1 : 2) as 1 | 2;
 
-    const pugRaw = await redisClient.get(`pug:${pugId}`) || await redisClient.get(`finished_pugs:${pugId}`);
-    if (!pugRaw) {
-      await interaction.editReply({ content: "⚠️ PUG data not found." });
-      return;
-    }
-
-    const pugData = JSON.parse(pugRaw);
-
-    const result = await update_mmr_after_finish({
+    // Build the same data object the backend expects
+    const data = {
       pug_id: pugId,
-      winner_team: winnerTeam,
-      verified_by: { id: interaction.user.id, username: interaction.user.username },
-    });
+      date: new Date().toISOString(),
+      winner: winnerTeam,
+      user_requested: {
+        id: interaction.user.id,
+        username: interaction.user.username,
+        discriminator: interaction.user.discriminator ?? "",
+        globalName: interaction.user.globalName ?? null,
+      },
+    };
+
+    // Call backend (this handles all MMR, Redis, SQL, captains, etc)
+    const result = await finish_pug_backend({ data });
 
     if (!result.success) {
-      await interaction.editReply({ content: "⚠️ MMR update failed." });
+      await interaction.editReply({
+        content: `❌ Failed to finish PUG: ${result.error || "Unknown error"}`,
+      });
       return;
     }
 
-    // --- Generate summary ---
-    const mmrData = result.results;
-    const team1Lines: string[] = [];
-    const team2Lines: string[] = [];
+    const mmrData = result.mmrChanges!;
+    const pugRedis = await redisClient.get(`finished_pugs:${pugId}`);
+    const pugData = pugRedis ? JSON.parse(pugRedis) : null;
 
-    for (const player of mmrData!) {
-      const name = pugData.team1.concat(pugData.team2).find((p: any) => p.id === player.playerId)?.username ?? "Unknown";
-      const mu = player.newMu.toFixed(1);
-      const sigma = player.newSigma.toFixed(1);
-      const approx = Math.round(player.newMu - 3 * player.newSigma);
-      const delta = player.delta > 0 ? `+${player.delta}` : `${player.delta}`;
+    // Build visual embed
+    const buildTeamField = (team: 1 | 2) => {
+      return mmrData
+        .filter((p) => p.team === team)
+        .map((p) => {
+          const oldMMR = Math.round(p.oldMu - 3 * p.oldSigma);
+          const newMMR = Math.round(p.newMu - 3 * p.newSigma);
+          const diff = newMMR - oldMMR;
+          const emoji = diff >= 0 ? "🟢" : "🔴";
 
-      const line = `• @${name} — ${mu} ±${sigma} (≈ ${approx}) (${player.team === winnerTeam ? `Win: ${delta}` : `Loss: ${delta}`})`;
+          const name =
+            pugData?.team1?.find((x: any) => x.id === p.playerId)?.username ||
+            pugData?.team2?.find((x: any) => x.id === p.playerId)?.username ||
+            "Unknown";
 
-      if (player.team === 1) team1Lines.push(line);
-      else team2Lines.push(line);
-    }
+          return `• ${name} — ${oldMMR} → ${newMMR} ${emoji} (${diff})`;
+        })
+        .join("\n");
+    };
 
-    const team1Name = pugData.captain1.username;
-    const team2Name = pugData.captain2.username;
+    const embed = new EmbedBuilder()
+      .setTitle(`🏆 Team ${winnerTeam} Wins!`)
+      .addFields(
+        { name: "Team 1", value: buildTeamField(1) || "_No players_" },
+        { name: "Team 2", value: buildTeamField(2) || "_No players_" }
+      )
+      .setFooter({ text: `PUG ID: ${pugId}` })
+      .setTimestamp();
 
-    const summary = [
-      `🏁 **${team1Name} vs ${team2Name}** — PUG **${pugId}**`,
-      "",
-      `**${team1Name}’s team**`,
-      ...team1Lines,
-      "",
-      `**${team2Name}’s team**`,
-      ...team2Lines,
-    ].join("\n");
+    await interaction.editReply({
+      embeds: [embed],
+      components: [],
+    });
 
-    await interaction.editReply({ content: summary });
   } catch (error) {
-    console.error("Error handling finish_pug button:", error);
-    await interaction.editReply({ content: "❌ Failed to finish PUG." });
+    console.error("❌ Error handling finish pug button:", error);
+    await interaction.editReply({
+      content: "❌ Failed to finish PUG due to internal error.",
+    });
   }
 }

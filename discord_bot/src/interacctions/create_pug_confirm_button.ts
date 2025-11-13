@@ -1,8 +1,9 @@
-import { ButtonInteraction } from "discord.js";
+import { ButtonInteraction, EmbedBuilder } from "discord.js";
 import { redisClient } from "../redis";
 import { create_pug_backend } from "../utils/create_pug_backend";
 import { v4 as uuidv4 } from "uuid";
 import { getPlayerMMRsWithStakes } from "../utils/calculate_mmr_stakes";
+
 
 export async function handleConfirmCaptains(interaction: ButtonInteraction) {
   const parts = interaction.customId.split(":"); // ["pug", "<uuid>", "confirm_captains"]
@@ -48,20 +49,39 @@ export async function handleConfirmCaptains(interaction: ButtonInteraction) {
     team1WithCaptain.map((p: any) => p.id),
     team2WithCaptain.map((p: any) => p.id)
   );
+  function averageConservativeMMR(team: any[], stakes: any[]) {
+    const teamStakes = team
+      .map((p) => stakes.find((s) => s.id === p.id))
+      .filter(Boolean);
 
+    if (teamStakes.length === 0) return 0;
+
+    const avg =
+      teamStakes.reduce((sum, s) => sum + (s.mu - 3 * s.sigma), 0) /
+      teamStakes.length;
+
+    return avg.toFixed(1);
+  }
+
+  const team1Avg = averageConservativeMMR(team1WithCaptain, stakes);
+  const team2Avg = averageConservativeMMR(team2WithCaptain, stakes);
   // 3️⃣ Build preview text using TrueSkill
   const buildTeamText = (team: any[]) =>
-    team
-      .map((p) => {
-        const s = stakes.find((x) => x.id === p.id);
-        if (!s) return `• <@${p.id}> — **MMR unknown**`;
+  team
+    .map((p) => {
+      const s = stakes.find((x) => x.id === p.id);
+      if (!s) return `• <@${p.id}> — *MMR unknown*`;
 
-        const winSign = s.potentialWin >= 0 ? `+${s.potentialWin}` : `${s.potentialWin}`;
-        const loseSign = s.potentialLoss >= 0 ? `+${s.potentialLoss}` : `${s.potentialLoss}`;
+      // Conservative MMR = μ - 3σ
+      const conservativeMMR = Math.max(s.mu - 3 * s.sigma, 0).toFixed(1);
 
-        return `• <@${p.id}> — ${s.mu.toFixed(1)} ±${s.sigma.toFixed(1)} (≈ ${s.currentMMR}) *(Win: ${winSign} / Loss: ${loseSign})*`;
-      })
-      .join("\n");
+      // Format signs nicely
+      const winSign = s.potentialWin >= 0 ? `+${s.potentialWin}` : `${s.potentialWin}`;
+      const loseSign = s.potentialLoss >= 0 ? `+${s.potentialLoss}` : `${s.potentialLoss}`;
+
+      return `• <@${p.id}> — *${conservativeMMR}* (Win: ${winSign} / Loss: ${loseSign})`;
+    })
+    .join("\n");
 
   const team1Text = buildTeamText(team1WithCaptain);
   const team2Text = buildTeamText(team2WithCaptain);
@@ -74,18 +94,35 @@ export async function handleConfirmCaptains(interaction: ButtonInteraction) {
   );
 
   // 4️⃣ Update Discord interaction
+  const captain1Mention = `<@${tempPug.captains.team1}>`;
+  const captain2Mention = `<@${tempPug.captains.team2}>`;
+  const captain1Name = captain1?.username || "Captain 1";
+  const captain2Name = captain2?.username || "Captain 2";
+
+  const embed = new EmbedBuilder()
+    .setTitle("✅ PUG Created!")
+    .setColor(0x00ae86)
+    .addFields(
+      {
+        name: "Captains",
+        value: `**Captain 1:** ${captain1Mention} (${captain1Name})\n**Captain 2:** ${captain2Mention} (${captain2Name})`,
+      },
+      {
+        name: `${captain1Name}'s Team — ${team1Avg}`,
+        value: team1Text,
+        inline: true,
+      },
+      {
+        name: `${captain2Name}'s Team — ${team2Avg}`,
+        value: team2Text,
+        inline: true,
+      }
+    )
+    .setFooter({ text: pug_id })
+    .setTimestamp();
+
   await interaction.update({
-    content: `✅ **PUG created!**
-
-  **Captain 1:** <@${tempPug.captains.team1}> (${captain1?.username || "Unknown"})
-  **Captain 2:** <@${tempPug.captains.team2}> (${captain2?.username || "Unknown"})
-  **Token:** \`${pug_id}\`
-
-  **${captain1?.username || "Captain 1"}'s team**
-  ${team1Text}
-
-  **${captain2?.username || "Captain 2"}'s team**
-  ${team2Text}`,
+    embeds: [embed],
     components: [],
   });
 
