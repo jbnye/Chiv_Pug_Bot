@@ -3,129 +3,150 @@ import { redisClient } from "../redis";
 import { create_pug_backend } from "../utils/create_pug_backend";
 import { v4 as uuidv4 } from "uuid";
 import { getPlayerMMRsWithStakes } from "../utils/calculate_mmr_stakes";
+import pool from "../database/db";
 
+// Utility: ensure players exist in DB
+async function ensurePlayersExist(players: { id: string; username: string }[]) {
+  const client = await pool.connect();
+  try {
+    for (const p of players) {
+      await client.query(
+        `INSERT INTO players (id, discord_username) VALUES ($1, $2)
+         ON CONFLICT (id) DO NOTHING`,
+        [p.id, p.username]
+      );
+    }
+  } finally {
+    client.release();
+  }
+}
 
 export async function handleConfirmCaptains(interaction: ButtonInteraction) {
-  const parts = interaction.customId.split(":"); // ["pug", "<uuid>", "confirm_captains"]
-  const tempPugId = parts[1];
+  try {
+    if (!interaction.deferred && !interaction.replied) {
+      await interaction.deferReply();
+    }
 
-  const tempKey = `temp_pug:${tempPugId}`;
-  const tempRaw = await redisClient.get(tempKey);
-  if (!tempRaw) return interaction.reply({ content: "⚠️ Could not find PUG in Redis.", ephemeral: true });
+    const parts = interaction.customId.split(":"); // ["pug", "<uuid>", "confirm_captains"]
+    const tempPugId = parts[1];
+    const tempKey = `temp_pug:${tempPugId}`;
+    const tempRaw = await redisClient.get(tempKey);
 
-  const tempPug = JSON.parse(tempRaw);
-  if (!tempPug.captains.team1 || !tempPug.captains.team2)
-    return interaction.reply({ content: "⚠️ Both captains must be selected.", ephemeral: true });
+    if (!tempRaw) {
+      return interaction.followUp({
+        content: "⚠️ Could not find PUG in Redis.",
+        ephemeral: true,
+      });
+    }
 
-  const pug_id = uuidv4();
+    const tempPug = JSON.parse(tempRaw);
+    if (!tempPug.captains.team1 || !tempPug.captains.team2) {
+      return interaction.followUp({
+        content: "⚠️ Both captains must be selected.",
+        ephemeral: true,
+      });
+    }
 
-  // Assign captains to first element for backend compatibility
-  const team1WithCaptain = tempPug.team1.map((p: any) => ({ ...p }));
-  const team2WithCaptain = tempPug.team2.map((p: any) => ({ ...p }));
+    // Assign captains to first element
+    const team1 = [...tempPug.team1];
+    const team2 = [...tempPug.team2];
 
-  const t1Index = team1WithCaptain.findIndex((p: any) => p.id === tempPug.captains.team1);
-  const t2Index = team2WithCaptain.findIndex((p: any) => p.id === tempPug.captains.team2);
-  if (t1Index > 0) [team1WithCaptain[0], team1WithCaptain[t1Index]] = [team1WithCaptain[t1Index], team1WithCaptain[0]];
-  if (t2Index > 0) [team2WithCaptain[0], team2WithCaptain[t2Index]] = [team2WithCaptain[t2Index], team2WithCaptain[0]];
+    const t1Index = team1.findIndex((p: any) => p.id === tempPug.captains.team1);
+    const t2Index = team2.findIndex((p: any) => p.id === tempPug.captains.team2);
 
-  // 1️⃣ Save PUG to backend
-  const result = await create_pug_backend({
-    data: {
-      pug_id,
-      date: new Date(),
-      team1: team1WithCaptain,
-      team2: team2WithCaptain,
-      user_requested: tempPug.user_requested,
-    },
-  });
+    if (t1Index > 0) [team1[0], team1[t1Index]] = [team1[t1Index], team1[0]];
+    if (t2Index > 0) [team2[0], team2[t2Index]] = [team2[t2Index], team2[0]];
 
-  if (!result.success)
-    return interaction.reply({ content: `❌ Failed to create PUG: ${result.error || "unknown error"}`, ephemeral: true });
+    // 0️⃣ Ensure captains exist in DB
+    const allPlayers = [...team1, ...team2];
+    await ensurePlayersExist(
+      allPlayers.map((p: any) => ({ id: p.id, username: p.username }))
+    );
 
-  // 2️⃣ Fetch TrueSkill ratings + potential changes
-  const allPlayers = [...team1WithCaptain, ...team2WithCaptain];
-  const stakes = await getPlayerMMRsWithStakes(
-    allPlayers.map((p: any) => ({ id: p.id, username: p.username })),
-    team1WithCaptain.map((p: any) => p.id),
-    team2WithCaptain.map((p: any) => p.id)
-  );
-  function averageConservativeMMR(team: any[], stakes: any[]) {
-    const teamStakes = team
-      .map((p) => stakes.find((s) => s.id === p.id))
-      .filter(Boolean);
+    // 1️⃣ Save PUG to backend
+    const pugToken = tempPugId; // <- use the existing UUID
+    const pugDate = new Date();
+    const { success, error, matchNumber } = await create_pug_backend({
+      data: {
+        pug_id: pugToken,
+        date: pugDate,
+        team1,
+        team2,
+        user_requested: tempPug.user_requested,
+      },
+    });
 
-    if (teamStakes.length === 0) return 0;
+    if (!success) {
+      return interaction.followUp({
+        content: `❌ Failed to create PUG: ${error || "unknown error"}`,
+        ephemeral: true,
+      });
+    }
 
-    const avg =
-      teamStakes.reduce((sum, s) => sum + (s.mu - 3 * s.sigma), 0) /
-      teamStakes.length;
+    // 2️⃣ Calculate TrueSkill
+    const stakes = await getPlayerMMRsWithStakes(
+      allPlayers.map((p) => ({ id: p.id, username: p.username })),
+      team1.map((p) => p.id),
+      team2.map((p) => p.id)
+    );
 
-    return avg.toFixed(1);
+    const avgConservativeMMR = (team: any[]) => {
+      const teamStakes = team.map((p) => stakes.find((s) => s.id === p.id)).filter(Boolean);
+      if (!teamStakes.length) return 0;
+      return (
+        teamStakes.reduce((sum, s) => sum + (s!.mu - 3 * s!.sigma), 0) /
+        teamStakes.length
+      ).toFixed(1);
+    };
+
+    const team1Avg = avgConservativeMMR(team1);
+    const team2Avg = avgConservativeMMR(team2);
+
+    const buildTeamText = (team: any[]) =>
+      team
+        .map((p) => {
+          const s = stakes.find((x) => x.id === p.id);
+          if (!s) return `• <@${p.id}> — *MMR unknown*`;
+
+          const conservativeMMR = Math.max(s.mu - 3 * s.sigma, 0).toFixed(1);
+          const winSign = s.potentialWin >= 0 ? `+${s.potentialWin}` : `${s.potentialWin}`;
+          const loseSign =
+            s.potentialLoss > 0 ? `+${s.potentialLoss}` : s.potentialLoss === 0 ? `-0` : `${s.potentialLoss}`;
+
+          return `• <@${p.id}> — *${conservativeMMR}* (Win: ${winSign} / Loss: ${loseSign})`;
+        })
+        .join("\n");
+
+    const embed = new EmbedBuilder()
+      .setTitle(`✅ PUG Created — Match #${matchNumber}!`)
+      .setColor(0x00ae86)
+      .addFields(
+        { name: `${team1[0].username}'s Team — ${team1Avg}`, value: buildTeamText(team1)},
+        { name: `${team2[0].username}'s Team — ${team2Avg}`, value: buildTeamText(team2)}
+      )
+      .setFooter({
+        text: `Match ID: ${matchNumber} • ${pugDate.toLocaleString("en-US", {
+          month: "long",
+          day: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+          hour12: true,
+          timeZone: "America/New_York",
+        })} EST`,
+      })
+      .setTimestamp();
+
+    await interaction.followUp({ embeds: [embed], components: [] });
+
+    // Cleanup
+    await redisClient.del(tempKey);
+  } catch (err) {
+    console.error("⚠️ handleConfirmCaptains error:", err);
+    if (!interaction.replied) {
+      await interaction.followUp({
+        content: "⚠️ Something went wrong confirming captains.",
+        ephemeral: true,
+      });
+    }
   }
-
-  const team1Avg = averageConservativeMMR(team1WithCaptain, stakes);
-  const team2Avg = averageConservativeMMR(team2WithCaptain, stakes);
-  // 3️⃣ Build preview text using TrueSkill
-  const buildTeamText = (team: any[]) =>
-  team
-    .map((p) => {
-      const s = stakes.find((x) => x.id === p.id);
-      if (!s) return `• <@${p.id}> — *MMR unknown*`;
-
-      // Conservative MMR = μ - 3σ
-      const conservativeMMR = Math.max(s.mu - 3 * s.sigma, 0).toFixed(1);
-
-      // Format signs nicely
-      const winSign = s.potentialWin >= 0 ? `+${s.potentialWin}` : `${s.potentialWin}`;
-      const loseSign = s.potentialLoss >= 0 ? `+${s.potentialLoss}` : `${s.potentialLoss}`;
-
-      return `• <@${p.id}> — *${conservativeMMR}* (Win: ${winSign} / Loss: ${loseSign})`;
-    })
-    .join("\n");
-
-  const team1Text = buildTeamText(team1WithCaptain);
-  const team2Text = buildTeamText(team2WithCaptain);
-
-  const captain1 = [...team1WithCaptain, ...team2WithCaptain].find(
-    (p) => p.id === tempPug.captains.team1
-  );
-  const captain2 = [...team1WithCaptain, ...team2WithCaptain].find(
-    (p) => p.id === tempPug.captains.team2
-  );
-
-  // 4️⃣ Update Discord interaction
-  const captain1Mention = `<@${tempPug.captains.team1}>`;
-  const captain2Mention = `<@${tempPug.captains.team2}>`;
-  const captain1Name = captain1?.username || "Captain 1";
-  const captain2Name = captain2?.username || "Captain 2";
-
-  const embed = new EmbedBuilder()
-    .setTitle("✅ PUG Created!")
-    .setColor(0x00ae86)
-    .addFields(
-      {
-        name: "Captains",
-        value: `**Captain 1:** ${captain1Mention} (${captain1Name})\n**Captain 2:** ${captain2Mention} (${captain2Name})`,
-      },
-      {
-        name: `${captain1Name}'s Team — ${team1Avg}`,
-        value: team1Text,
-        inline: true,
-      },
-      {
-        name: `${captain2Name}'s Team — ${team2Avg}`,
-        value: team2Text,
-        inline: true,
-      }
-    )
-    .setFooter({ text: pug_id })
-    .setTimestamp();
-
-  await interaction.update({
-    embeds: [embed],
-    components: [],
-  });
-
-  // 5️⃣ Cleanup
-  await redisClient.del(tempKey);
 }

@@ -44,23 +44,33 @@ export async function handleFinishPugButton(interaction: ButtonInteraction) {
           const oldMMR = Math.round(p.oldMu - 3 * p.oldSigma);
           const newMMR = Math.round(p.newMu - 3 * p.newSigma);
           const diff = newMMR - oldMMR;
-          const emoji = diff >= 0 ? "🟢" : "🔴";
 
           const name =
             pugData?.team1?.find((x: any) => x.id === p.playerId)?.username ||
             pugData?.team2?.find((x: any) => x.id === p.playerId)?.username ||
             "Unknown";
 
-          return `• ${name} — ${oldMMR} → ${newMMR} ${emoji} (${diff})`;
+          return `• ${name} — ${oldMMR} → ${newMMR} (${diff})`;
         })
         .join("\n");
     };
 
+    const winnerCaptain =
+      winnerTeam === 1 ? pugData.captain1.username : pugData.captain2.username;
+    const loserCaptain =
+      winnerTeam === 1 ? pugData.captain2.username : pugData.captain1.username;
+
     const embed = new EmbedBuilder()
-      .setTitle(`🏆 Team ${winnerTeam} Wins!`)
+      .setTitle(`${winnerCaptain}'s Team Wins!`)
       .addFields(
-        { name: "Team 1", value: buildTeamField(1) || "_No players_" },
-        { name: "Team 2", value: buildTeamField(2) || "_No players_" }
+        {
+          name: `${pugData.captain1.username}'s Team`,
+          value: buildTeamField(1) || "_No players_",
+        },
+        {
+          name: `${pugData.captain2.username}'s Team`,
+          value: buildTeamField(2) || "_No players_",
+        }
       )
       .setFooter({ text: `PUG ID: ${pugId}` })
       .setTimestamp();

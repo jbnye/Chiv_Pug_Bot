@@ -43,12 +43,12 @@ export default {
         });
 
         const label = `${pug.captain1.username} vs ${pug.captain2.username}`;
-        const desc = `${estTime} EST\n[PUG ID: ${pug.pug_id}]`;
+        const desc = `${estTime} EST\n[PUG ID: ${pug.token}]`;
 
         return new StringSelectMenuOptionBuilder()
           .setLabel(label)
           .setDescription(desc)
-          .setValue(pug.pug_id);
+          .setValue(pug.token);
       });
 
       const selectMenu = new StringSelectMenuBuilder()

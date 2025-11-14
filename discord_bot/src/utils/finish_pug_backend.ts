@@ -23,6 +23,7 @@ export const finish_pug_backend = async ({ data }: FinishPugBackendProps) => {
 
     // 1️⃣ Retrieve PUG data from Redis
     const pugData = await redisClient.get(pugKey);
+    console.log("PUG DATA:", pugData);
     if (!pugData) {
       console.error(`❌ No active PUG found for ${pugKey}`);
       return { success: false, error: "PUG not found in Redis" };
@@ -36,7 +37,7 @@ export const finish_pug_backend = async ({ data }: FinishPugBackendProps) => {
       winner_team: data.winner as 1 | 2,
       verified_by: {
         id: data.user_requested.id,
-        username: data.user_requested.username,
+        username: data.user_requested.username, // fixed
       },
     });
 
@@ -76,7 +77,7 @@ export const finish_pug_backend = async ({ data }: FinishPugBackendProps) => {
       INSERT INTO commands (discord_id, discord_username, pug_token, action)
       VALUES ($1, $2, $3, $4)
       `,
-      [data.user_requested.id, data.user_requested.username, data.pug_id, "finished"]
+      [data.user_requested.id, data.user_requested.username, data.pug_id, "finished"] // fixed
     );
 
     console.log("🧾 Finished PUG command logged to SQL.");
@@ -105,7 +106,8 @@ ${formatTeam(2)}
 `;
 
     // 6️⃣ Update captain win/loss records
-    const { team1: captain1Id, team2: captain2Id } = pug.captains;
+    const captain1Id = pug.captain1.id;
+    const captain2Id = pug.captain2.id;
     const winningCaptain = data.winner === 1 ? captain1Id : captain2Id;
     const losingCaptain = data.winner === 1 ? captain2Id : captain1Id;
 

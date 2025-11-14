@@ -39,6 +39,19 @@ export default {
     `;
     const { rows: playerRows } = await pool.query(playerQuery, [user.id]);
 
+    const rankQuery = `
+      SELECT discord_id,
+            RANK() OVER (ORDER BY GREATEST((mu - 3*sigma), 0) DESC) AS rank,
+            COUNT(*) OVER() AS total_players
+      FROM players;
+    `;
+    const { rows: rankRows } = await pool.query(rankQuery);
+
+const playerRankRow = rankRows.find((r) => r.discord_id === user.id);
+const rankText = playerRankRow
+  ? `#${playerRankRow.rank} out of ${playerRankRow.total_players}`
+  : "_Unranked_";
+
     if (playerRows.length === 0) {
       await interaction.editReply({
         content: `No data found for ${user.username}.`,
@@ -89,6 +102,13 @@ export default {
         {
           name: "MMR Overview",
           value: `**Rating:** ${p.conservative_mmr}\n**TrueSkill:** μ=${p.mu.toFixed(
+            2
+          )}, σ=${p.sigma.toFixed(2)}\n**Confidence:** ${confidence}%`,
+          inline: false,
+        },
+        {
+          name: "MMR Overview",
+          value: `**Rating:** ${p.conservative_mmr} (${rankText})\n**TrueSkill:** μ=${p.mu.toFixed(
             2
           )}, σ=${p.sigma.toFixed(2)}\n**Confidence:** ${confidence}%`,
           inline: false,
