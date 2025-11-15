@@ -64,30 +64,38 @@ const rankText = playerRankRow
 
     // 🕒 Fetch last 3 matches
     const matchesQuery = `
-        SELECT 
-            p.pug_id,
-            p.created_at,
-            p.captain1_id,
-            p.captain2_id,
-            pp.team_number AS team,
-            pp.mmr_change
-        FROM pug_players pp
-        JOIN pugs p ON pp.pug_id = p.pug_id
-        JOIN players pl ON pp.player_id = pl.id
-        WHERE pl.discord_id = $1
-        ORDER BY p.created_at DESC
-        LIMIT 3;
-        `;
+      SELECT 
+          p.pug_id,
+          p.created_at,
+          p.captain1_id,
+          p.captain2_id,
+          pl1.username AS captain1_username,
+          pl2.username AS captain2_username,
+          pp.team_number AS team,
+          pp.mmr_change
+      FROM pug_players pp
+      JOIN pugs p 
+          ON pp.pug_id = p.pug_id
+      JOIN players pl 
+          ON pp.player_id = pl.id
+
+      JOIN players pl1 
+          ON p.captain1_id = pl1.discord_id
+      JOIN players pl2
+          ON p.captain2_id = pl2.discord_id
+
+      WHERE pl.discord_id = $1
+      ORDER BY p.created_at DESC
+      LIMIT 3;
+    `;
+    
     const { rows: matchRows } = await pool.query(matchesQuery, [user.id]);
     // 🧱 Build match history section
     const recentMatches =
     matchRows.length > 0
         ? matchRows
-            .map(
-            (m) =>
-                `• Match #${m.pug_id} — Team ${m.team} — ${m.mmr_change >= 0 ? "+" : ""}${m.mmr_change} MMR`
-            )
-            .join("\n")
+            .map((m) =>
+                  `• Match #${m.pug_id} — ${m.captain1_username} vs ${m.captain2_username} — (${m.mmr_change >= 0 ? "+" : ""}${m.mmr_change}) MMR`).join("\n")
         : "_No recent matches found._";
 
     // 🎨 Build the embed
@@ -101,13 +109,6 @@ const rankText = playerRankRow
       .addFields(
         {
           name: "MMR Overview",
-          value: `**Rating:** ${p.conservative_mmr}\n**TrueSkill:** μ=${p.mu.toFixed(
-            2
-          )}, σ=${p.sigma.toFixed(2)}\n**Confidence:** ${confidence}%`,
-          inline: false,
-        },
-        {
-          name: "MMR Overview",
           value: `**Rating:** ${p.conservative_mmr} (${rankText})\n**TrueSkill:** μ=${p.mu.toFixed(
             2
           )}, σ=${p.sigma.toFixed(2)}\n**Confidence:** ${confidence}%`,
@@ -115,7 +116,7 @@ const rankText = playerRankRow
         },
         {
           name: "Match Record",
-          value: `Wins: ${p.wins} - ${p.losses}\nCaptain Wins: ${p.captain_wins} - ${p.captain_losses}`,
+          value: `Wins: ${p.wins} W - ${p.losses} L\nCaptain Wins: ${p.captain_wins} W - ${p.captain_losses} L`,
           inline: false,
         },
         {
@@ -124,9 +125,6 @@ const rankText = playerRankRow
           inline: false,
         }
       )
-      .setFooter({
-        text: `Player ID: ${p.discord_id}`,
-      })
       .setTimestamp();
 
     await interaction.editReply({ embeds: [embed] });

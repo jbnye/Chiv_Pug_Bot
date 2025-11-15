@@ -47,7 +47,6 @@ export const finish_pug_backend = async ({ data }: FinishPugBackendProps) => {
     }
 
     const { results: mmrChanges } = mmrResult;
-
     // 3️⃣ Move PUG to finished_pugs in Redis
     const finishedPugData = {
       ...pug,

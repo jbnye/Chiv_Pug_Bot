@@ -10,24 +10,6 @@ export const create_pug_backend = async ({ data }: create_pug_backend_Props) => 
   const db_client = await pool.connect();
 
   try {
-    // 1️⃣ Save PUG in Redis using UUID token
-    const redisKey = `pug:${data.pug_id}`; // UUID
-    const pugRecord = {
-      token: data.pug_id, 
-      date: data.date,
-      team1: data.team1,
-      team2: data.team2,
-      captain1: data.team1[0],
-      captain2: data.team2[0],
-      user_created: data.user_requested,
-    };
-
-    await redisClient.set(redisKey, JSON.stringify(pugRecord), { EX: 86400 });
-    await redisClient.zAdd("pugs:by_date", [
-      { score: Date.now(), value: data.pug_id },
-    ]);
-    console.log(`✅ Created PUG saved to Redis as ${redisKey}`);
-
     // 2️⃣ Save PUG in Postgres (auto-increment pug_id) with UUID as token
     const res = await db_client.query(
       `
@@ -52,8 +34,28 @@ export const create_pug_backend = async ({ data }: create_pug_backend_Props) => 
         "created",
       ]
     );
-
     console.log(`✅ Created PUG Command saved to PostgreSQL`);
+        // 1️⃣ Save PUG in Redis using UUID token
+    const redisKey = `pug:${data.pug_id}`; // UUID
+    const pugRecord = {
+      token: data.pug_id, 
+      date: data.date,
+      team1: data.team1,
+      team2: data.team2,
+      captain1: data.team1[0],
+      captain2: data.team2[0],
+      user_created: data.user_requested,
+    };
+    const pug_with_matchID = {
+      ...pugRecord,
+      match_id: matchNumber
+    }
+    await redisClient.set(redisKey, JSON.stringify(pug_with_matchID), { EX: 86400 });
+    await redisClient.zAdd("pugs:by_date", [
+      { score: Date.now(), value: data.pug_id },
+    ]);
+    console.log(`✅ Created PUG saved to Redis as ${redisKey}`);
+
 
     return { success: true, key: redisKey, matchNumber };
   } catch (error: any) {

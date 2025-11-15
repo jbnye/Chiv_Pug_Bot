@@ -11,8 +11,9 @@ async function ensurePlayersExist(players: { id: string; username: string }[]) {
   try {
     for (const p of players) {
       await client.query(
-        `INSERT INTO players (id, discord_username) VALUES ($1, $2)
-         ON CONFLICT (id) DO NOTHING`,
+        `INSERT INTO players (discord_id, discord_username)
+         VALUES ($1, $2)
+         ON CONFLICT (discord_id) DO NOTHING`,
         [p.id, p.username]
       );
     }
@@ -125,7 +126,7 @@ export async function handleConfirmCaptains(interaction: ButtonInteraction) {
         { name: `${team2[0].username}'s Team — ${team2Avg}`, value: buildTeamText(team2)}
       )
       .setFooter({
-        text: `Match ID: ${matchNumber} • ${pugDate.toLocaleString("en-US", {
+        text: `Match #${matchNumber} • ${pugDate.toLocaleString("en-US", {
           month: "long",
           day: "numeric",
           hour: "numeric",
@@ -134,8 +135,6 @@ export async function handleConfirmCaptains(interaction: ButtonInteraction) {
           timeZone: "America/New_York",
         })} EST`,
       })
-      .setTimestamp();
-
     await interaction.followUp({ embeds: [embed], components: [] });
 
     // Cleanup
