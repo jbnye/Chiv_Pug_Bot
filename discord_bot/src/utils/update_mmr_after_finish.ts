@@ -3,13 +3,13 @@ import pool from "../database/db";
 import { Rating, rate } from "ts-trueskill";
 
 interface UpdateMMRAfterFinishProps {
-  pug_id: string;
+  pug_id: string; 
   winner_team: 1 | 2;
   verified_by: { id: string; username: string };
 }
 
 interface MMRChange {
-  playerId: string;
+  playerId: string; // discord_id
   oldMu: number;
   oldSigma: number;
   newMu: number;
@@ -45,57 +45,51 @@ export async function update_mmr_after_finish({
   try {
     await db.query("BEGIN");
 
-    const playerMap = new Map<string, number>(); // discord_id → player_id
     const playerRatings = new Map<string, Rating>(); // discord_id → Rating
-
     const conservative = (mu: number, sigma: number) => Math.max(mu - 3 * sigma, 0);
 
     // 1️⃣ Ensure all players exist with TrueSkill ratings
     for (const player of allPlayers) {
-      const res = await db.query(`SELECT id, mu, sigma FROM players WHERE discord_id = $1`, [player.id]);
-      let player_id: number;
+      const res = await db.query(
+        `SELECT discord_id, mu, sigma FROM players WHERE discord_id = $1`,
+        [player.id]
+      );
+
       let rating: Rating;
 
       if (res.rows.length === 0) {
-        // Insert with ON CONFLICT so duplicates don't break
         const insertRes = await db.query(
           `
           INSERT INTO players (discord_id, discord_username, mu, sigma)
           VALUES ($1, $2, $3, $4)
           ON CONFLICT (discord_id) DO UPDATE
           SET discord_username = EXCLUDED.discord_username
-          RETURNING id, mu, sigma
+          RETURNING mu, sigma
           `,
           [player.id, player.username, 25.0, 8.333]
         );
-        player_id = insertRes.rows[0].id;
         rating = new Rating(insertRes.rows[0].mu, insertRes.rows[0].sigma);
       } else {
-        player_id = res.rows[0].id;
         rating = new Rating(res.rows[0].mu ?? 25.0, res.rows[0].sigma ?? 8.333);
       }
 
-      playerMap.set(player.id, player_id);
       playerRatings.set(player.id, rating);
     }
 
     // 2️⃣ Ensure verifier exists
-    let verified_by_player_id = playerMap.get(verified_by.id);
-    if (!verified_by_player_id) {
-      const insertVerifier = await db.query(
-        `
-        INSERT INTO players (discord_id, discord_username, mu, sigma)
-        VALUES ($1, $2, 25.0, 8.333)
-        ON CONFLICT (discord_id) DO UPDATE
-        SET discord_username = EXCLUDED.discord_username
-        RETURNING id
-        `,
-        [verified_by.id, verified_by.username]
-      );
-      verified_by_player_id = insertVerifier.rows[0].id;
-    }
+    const verifierRes = await db.query(
+      `
+      INSERT INTO players (discord_id, discord_username, mu, sigma)
+      VALUES ($1, $2, 25.0, 8.333)
+      ON CONFLICT (discord_id) DO UPDATE
+      SET discord_username = EXCLUDED.discord_username
+      RETURNING discord_id
+      `,
+      [verified_by.id, verified_by.username]
+    );
+    const verified_by_discord_id = verifierRes.rows[0].discord_id;
 
-    // 3️⃣ Create/find pug record
+    // 3️⃣ Look up integer pug_id from token
     const pugRes = await db.query(`SELECT pug_id FROM pugs WHERE token = $1`, [pug_id]);
     let pug_sql_id: number;
     if (pugRes.rows.length === 0) {
@@ -105,7 +99,7 @@ export async function update_mmr_after_finish({
         VALUES ($1, $2, $3, NOW())
         RETURNING pug_id
         `,
-        [pug_id, playerMap.get(pug.captain1.id), playerMap.get(pug.captain2.id)]
+        [pug_id, pug.captain1.id, pug.captain2.id]
       );
       pug_sql_id = insertPug.rows[0].pug_id;
     } else {
@@ -116,14 +110,13 @@ export async function update_mmr_after_finish({
     const tsTeam1 = pug.team1.map((p: any) => playerRatings.get(p.id)!);
     const tsTeam2 = pug.team2.map((p: any) => playerRatings.get(p.id)!);
 
-    // 5️⃣ Rate based on winner
+    // 5️⃣ Rate teams based on winner
     const rankedTeams = winner_team === 1 ? [tsTeam1, tsTeam2] : [tsTeam2, tsTeam1];
     const newRatings = rate(rankedTeams);
 
     const updateTeam = async (team: any[], teamNum: 1 | 2, updatedRatings: Rating[]) => {
       for (let i = 0; i < team.length; i++) {
         const player = team[i];
-        const player_id = playerMap.get(player.id)!;
         const oldRating = playerRatings.get(player.id)!;
         const newRating = updatedRatings[i];
         const didWin = winner_team === teamNum;
@@ -132,7 +125,7 @@ export async function update_mmr_after_finish({
         const newMMR = Math.round(conservative(newRating.mu, newRating.sigma));
         const mmrChange = newMMR - oldMMR;
 
-        // 🧠 Update players table
+        // Update players table
         await db.query(
           `
           UPDATE players
@@ -142,23 +135,23 @@ export async function update_mmr_after_finish({
               losses = losses + $4,
               last_match_played = NOW(),
               updated_at = NOW()
-          WHERE id = $5
+          WHERE discord_id = $5
           `,
-          [newRating.mu, newRating.sigma, didWin ? 1 : 0, didWin ? 0 : 1, player_id]
+          [newRating.mu, newRating.sigma, didWin ? 1 : 0, didWin ? 0 : 1, player.id]
         );
 
-        // 🧾 Insert into pug_players
+        // Insert into pug_players using discord_id
         await db.query(
           `
-          INSERT INTO pug_players 
-            (pug_id, player_id, team_number, is_captain, 
-             trueskill_before, trueskill_after, confidence_before, confidence_after, 
+          INSERT INTO pug_players
+            (pug_id, discord_id, team_number, is_captain,
+             trueskill_before, trueskill_after, confidence_before, confidence_after,
              won, mmr_change)
           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
           `,
           [
             pug_sql_id,
-            player_id,
+            player.id,
             teamNum,
             player.id === pug.captain1.id || player.id === pug.captain2.id,
             oldRating.mu,
@@ -170,15 +163,15 @@ export async function update_mmr_after_finish({
           ]
         );
 
-        // 📈 Insert MMR history
+        // Insert MMR history using discord_id
         await db.query(
           `
-          INSERT INTO mmr_history 
-            (player_id, pug_id, old_mmr, new_mmr, change, 
+          INSERT INTO mmr_history
+            (discord_id, pug_id, old_mmr, new_mmr, change,
              mu_before, mu_after, sigma_before, sigma_after)
           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
           `,
-          [player_id, pug_sql_id, oldMMR, newMMR, mmrChange, oldRating.mu, newRating.mu, oldRating.sigma, newRating.sigma]
+          [player.id, pug_sql_id, oldMMR, newMMR, mmrChange, oldRating.mu, newRating.mu, oldRating.sigma, newRating.sigma]
         );
 
         mmrResults.push({
@@ -207,7 +200,7 @@ export async function update_mmr_after_finish({
           verified_by = $2
       WHERE token = $3
       `,
-      [winner_team, verified_by_player_id, pug_id]
+      [winner_team, verified_by_discord_id, pug_id]
     );
 
     await db.query("COMMIT");

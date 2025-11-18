@@ -119,7 +119,7 @@ export async function handleConfirmCaptains(interaction: ButtonInteraction) {
         .join("\n");
 
     const embed = new EmbedBuilder()
-      .setTitle(`✅ PUG Created — Match #${matchNumber}!`)
+      .setTitle(`PUG Created — Match #${matchNumber}!`)
       .setColor(0x00ae86)
       .addFields(
         { name: `${team1[0].username}'s Team — ${team1Avg}`, value: buildTeamText(team1)},

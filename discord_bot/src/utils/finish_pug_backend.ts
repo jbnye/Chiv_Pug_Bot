@@ -95,14 +95,14 @@ export const finish_pug_backend = async ({ data }: FinishPugBackendProps) => {
         .join("\n") || "_No players found_";
 
     const summaryMessage = `✅ **PUG Finished!**
-🏆 **Winner:** Team ${data.winner}
+    🏆 **Winner:** Team ${data.winner}
 
-**Team 1**
-${formatTeam(1)}
+    **Team 1**
+    ${formatTeam(1)}
 
-**Team 2**
-${formatTeam(2)}
-`;
+    **Team 2**
+    ${formatTeam(2)}
+    `;
 
     // 6️⃣ Update captain win/loss records
     const captain1Id = pug.captain1.id;

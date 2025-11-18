@@ -43,13 +43,15 @@ export default {
         });
 
         const label = `${pug.captain1.username} vs ${pug.captain2.username}`;
-        const desc = `${estTime} EST\n[PUG ID: ${pug.token}]`;
+        const desc = `${estTime} EST\n[Match #${pug.match_id}]`;
 
+        // console.log("PUG ENTRY:", pug);
+        // console.log("match_id:", pug.match_id);
         return new StringSelectMenuOptionBuilder()
           .setLabel(label)
           .setDescription(desc)
           .setValue(pug.token);
-      });
+        });
 
       const selectMenu = new StringSelectMenuBuilder()
         .setCustomId("finish_pug_select")
@@ -59,7 +61,7 @@ export default {
       const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(selectMenu);
 
       await interaction.reply({
-        content: "🏁 Select the PUG you’d like to finish:",
+        content: "Select the PUG you'd like to finish:",
         components: [row],
       });
     } catch (error) {

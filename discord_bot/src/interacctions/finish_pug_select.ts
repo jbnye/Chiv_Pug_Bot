@@ -23,8 +23,9 @@ export async function handleFinishPugSelect(interaction: StringSelectMenuInterac
     }
 
     const pugData = JSON.parse(pugRaw);
-  const team1Captain = pugData.captain1?.username ?? "Team 1";
-  const team2Captain = pugData.captain2?.username ?? "Team 2";
+    const match_id = pugData.match_id ?? 0;
+    const team1Captain = pugData.captain1?.username ?? "Team 1";
+    const team2Captain = pugData.captain2?.username ?? "Team 2";
 
     const date = new Date();
     const estDate = date.toLocaleString("en-US", {
@@ -37,24 +38,24 @@ export async function handleFinishPugSelect(interaction: StringSelectMenuInterac
     });
 
     const team1Btn = new ButtonBuilder()
-      .setCustomId(`finish_team1_${selectedPugId}`)
+      .setCustomId(`finish_team1_${match_id}_${selectedPugId}`)
       .setLabel(`${team1Captain}'s Team Won`)
-      .setStyle(ButtonStyle.Success);
+      .setStyle(ButtonStyle.Secondary);
 
     const team2Btn = new ButtonBuilder()
-      .setCustomId(`finish_team2_${selectedPugId}`)
+      .setCustomId(`finish_team2_${match_id}_${selectedPugId}`)
       .setLabel(`${team2Captain}'s Team Won`)
-      .setStyle(ButtonStyle.Danger);
+      .setStyle(ButtonStyle.Secondary);
 
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(team1Btn, team2Btn);
 
-    const messageContent = `**Finish PUG Selection**
-
-    ${team1Captain} vs ${team2Captain}
-    ${estDate} EST
-    **[PUG ID: ${selectedPugId}]**
-
-    Pick the winning team below:`;
+    const messageContent = [
+      `**Match #${match_id}**`,
+      `**${team1Captain}** vs **${team2Captain}**`,
+      `${estDate} EST`,
+      "",
+      "Select the winning team below:"
+    ].join("\n");
 
     await interaction.editReply({
       content: messageContent,
