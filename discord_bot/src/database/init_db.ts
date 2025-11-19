@@ -9,7 +9,7 @@ import pool from "./db";
           discord_username TEXT,
           discord_tag TEXT,
           mu FLOAT DEFAULT 25,          -- TrueSkill rating
-          sigma FLOAT DEFAULT 8.333,    -- TrueSkill uncertainty
+          sigma FLOAT DEFAULT 3.333,    -- TrueSkill uncertainty
           wins INT DEFAULT 0,
           losses INT DEFAULT 0,
           captain_wins INT DEFAULT 0,

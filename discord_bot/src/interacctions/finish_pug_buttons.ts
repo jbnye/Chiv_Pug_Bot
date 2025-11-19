@@ -71,15 +71,15 @@ export async function handleFinishPugButton(interaction: ButtonInteraction) {
         "Unknown";
 
       // Format delta string based on win/loss
-      const diffStr =
-        team === winningTeam
-          ? delta >= 0
-            ? `+${delta}`
-            : `+0` // always positive for winners
-          : delta <= 0
-          ? `${delta}` // negative for losers
-          : `-0`; // if zero but lost
-
+      // const diffStr =
+      //   team === winningTeam
+      //     ? delta >= 0
+      //       ? `+${delta}`
+      //       : `+0` 
+      //     : delta <= 0
+      //     ? `${delta}` 
+      //     : `-0`; 
+      const diffStr = delta >= 0 ? `+${delta}` : `${delta}`;
       return `• ${name} — ${oldShown} → ${newShown} (${diffStr})`;
     })
     .join("\n");

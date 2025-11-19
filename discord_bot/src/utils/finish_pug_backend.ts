@@ -86,11 +86,8 @@ export const finish_pug_backend = async ({ data }: FinishPugBackendProps) => {
       mmrChanges!
         .filter((c) => c.team === teamNum)
         .map((c) => {
-          const oldMMR = Math.round(c.oldMu - 3 * c.oldSigma);
-          const newMMR = Math.round(c.newMu - 3 * c.newSigma);
-          const delta = newMMR - oldMMR;
-          const diff = delta >= 0 ? `🟢 (+${delta})` : `🔴 (${delta})`;
-          return `• <@${c.playerId}> — ${oldMMR} → ${newMMR} ${diff}`;
+          const diff = c.delta >= 0 ? `🟢 (+${c.delta})` : `🔴 (${c.delta})`;
+          return `• <@${c.playerId}> — ${c.oldMMR} → ${c.newMMR} ${diff}`;
         })
         .join("\n") || "_No players found_";
 

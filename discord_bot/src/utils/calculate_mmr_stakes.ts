@@ -1,101 +1,113 @@
 import pool from "../database/db";
-import { rate, Rating } from "ts-trueskill";
-
-/**
- * Get current TrueSkill (mu/sigma) for all players,
- * and calculate potential gain/loss for each player.
- */
+import { Rating } from "ts-trueskill";
+import { computeNewRatings } from "./trueskill";
 
 export async function getPlayerMMRsWithStakes(
   players: { id: string; username: string }[],
-  team1: string[], // array of discord_ids
-  team2: string[]  // array of discord_ids
+  team1: string[],
+  team2: string[]
 ) {
   const db = await pool.connect();
-
   try {
-    // Map each player to their TrueSkill Rating
-    const playerRatings: Record<string, Rating> = {};
+    const ratingMap: Record<string, Rating> = {};
 
-    for (const player of players) {
-      // Try to fetch existing TrueSkill data
-      const res = await db.query(
-        `SELECT mu, sigma FROM players WHERE discord_id = $1`,
-        [player.id]
-      );
+    console.log("=== GET PLAYER MMRs WITH STAKES ===");
+    console.log("Players:", players.map((p) => p.id));
+    console.log("Team1:", team1);
+    console.log("Team2:", team2);
 
+    // 🔹 Load or create player ratings
+    for (const p of players) {
+      const res = await db.query(`SELECT mu, sigma FROM players WHERE discord_id = $1`, [p.id]);
       let mu = 25.0;
-      let sigma = 8.333;
-
-      if (res.rows.length === 0) {
-        // Player not found — create default record
+      let sigma = 3.333;
+      if (res.rows.length) {
+        mu = res.rows[0].mu ?? mu;
+        sigma = res.rows[0].sigma ?? sigma;
+        console.log(`Loaded ${p.username} (${p.id}): mu=${mu.toFixed(6)}, sigma=${sigma.toFixed(6)}`);
+      } else {
         await db.query(
           `INSERT INTO players (discord_id, discord_username, mu, sigma)
            VALUES ($1, $2, $3, $4)
            ON CONFLICT (discord_id) DO NOTHING`,
-          [player.id, player.username, mu, sigma]
+          [p.id, p.username, mu, sigma]
         );
-      } else {
-        mu = res.rows[0].mu;
-        sigma = res.rows[0].sigma;
+        console.log(`Created ${p.username} (${p.id}) with defaults mu=${mu}, sigma=${sigma}`);
       }
-
-      playerRatings[player.id] = new Rating(mu, sigma);
+      ratingMap[p.id] = new Rating(mu, sigma);
     }
 
-    // Convert teams into Rating arrays
-    const team1Ratings = team1.map((id) => playerRatings[id]);
-    const team2Ratings = team2.map((id) => playerRatings[id]);
+    const team1Ratings = team1.map((id) => ratingMap[id]);
+    const team2Ratings = team2.map((id) => ratingMap[id]);
 
-    // Simulate both outcomes (Team1 win and Team2 win)
-    const [team1Win_newTeam1, team1Win_newTeam2] = rate(
-      [team1Ratings, team2Ratings],
-      [1, 2]
-    );
-    const [team2Win_newTeam1, team2Win_newTeam2] = rate(
-      [team1Ratings, team2Ratings],
-      [2, 1]
-    );
+    console.log("\n--- COMPUTING NEW RATINGS ---");
 
-    const results = [];
-    const [team1Win_t1New, team1Win_t2New] = rate([team1Ratings, team2Ratings], [1, 2]);
-    const [team2Win_t1New, team2Win_t2New] = rate([team1Ratings, team2Ratings], [2, 1]);
-    // Calculate deltas for each player
+    // 4 unique scenarios
+    const [t1Win_newT1, t1Win_newT2] = computeNewRatings(team1Ratings, team2Ratings, true);   // Team1 wins
+    const [t1Lose_newT1, t1Lose_newT2] = computeNewRatings(team1Ratings, team2Ratings, false); // Team1 loses (Team2 wins)
+    // const [t2Win_newT2, t2Win_newT1] = computeNewRatings(team2Ratings, team1Ratings, true);   // Team2 wins
+    // const [t2Lose_newT2, t2Lose_newT1] = computeNewRatings(team2Ratings, team1Ratings, false); // Team2 loses (Team1 wins)
 
-  const conservative = (mu: number, sigma: number) => Math.max(mu - 3 * sigma, 0);
+    const shownMMRFromMuSigma = (mu: number, sigma: number) => Math.floor(Math.max(mu - 3 * sigma, 0));
 
-  for (const player of players) {
-    const rating = playerRatings[player.id];
-    const isTeam1 = team1.includes(player.id);
+    const results: Array<{
+      id: string;
+      username: string;
+      mu: number;
+      sigma: number;
+      currentMMR: number;
+      potentialWin: number;
+      potentialLoss: number;
+      winRating: Rating;
+      loseRating: Rating;
+    }> = [];
 
-    // Current conservative MMR
-    const currentMMR = Math.round(conservative(rating.mu, rating.sigma));
+    console.log("\n======= PER PLAYER CALCULATIONS =======");
 
-    // Find player's new rating for both outcomes
-    const winRating = isTeam1
-      ? team1Win_t1New[team1.indexOf(player.id)]
-      : team2Win_t2New[team2.indexOf(player.id)];
+    for (const p of players) {
+      const rating = ratingMap[p.id];
+      const currentShown = shownMMRFromMuSigma(rating.mu, rating.sigma);
+      const isTeam1 = team1.includes(p.id);
+      let effectiveWinR: Rating, effectiveLoseR: Rating;
 
-    const loseRating = isTeam1
-      ? team2Win_t1New[team1.indexOf(player.id)]
-      : team1Win_t2New[team2.indexOf(player.id)];
+      if (isTeam1) {
+        effectiveWinR = t1Win_newT1[team1.indexOf(p.id)];
+        effectiveLoseR = t1Lose_newT1[team1.indexOf(p.id)];
+      } else {
+        effectiveWinR = t1Lose_newT2[team2.indexOf(p.id)];  // their win is when team2 wins
+        effectiveLoseR = t1Win_newT2[team2.indexOf(p.id)];   // their loss is when team2 loses
+      }
 
-    const winMMR = Math.round(conservative(winRating.mu, winRating.sigma));
-    const loseMMR = Math.round(conservative(loseRating.mu, loseRating.sigma));
+      const winShown = shownMMRFromMuSigma(effectiveWinR.mu, effectiveWinR.sigma);
+      const loseShown = shownMMRFromMuSigma(effectiveLoseR.mu, effectiveLoseR.sigma);
 
-    const potentialWin = winMMR - currentMMR;
-    const potentialLoss = loseMMR - currentMMR;
+      const potentialWin = winShown - currentShown;
+      const potentialLoss = loseShown - currentShown;
 
-    results.push({
-      id: player.id,
-      username: player.username,
-      mu: rating.mu,
-      sigma: rating.sigma,
-      currentMMR,
-      potentialWin,
-      potentialLoss,
-    });
-  }
+      console.log(`\nPLAYER ${p.username} (${p.id})`);
+      console.log(`  Current trueskill=${rating.mu.toFixed(6)}, sigma=${rating.sigma.toFixed(6)}, Current shown: ${currentShown}`);
+      console.log(
+        `  Win → mu=${effectiveWinR.mu.toFixed(6)}, sigma=${effectiveWinR.sigma.toFixed(6)}, shown=${winShown}, delta=${potentialWin}`
+      );
+      console.log(
+        `  Loss → mu=${effectiveLoseR.mu.toFixed(6)}, sigma=${effectiveLoseR.sigma.toFixed(6)}, shown=${loseShown}, delta=${potentialLoss}`
+      );
+
+      results.push({
+        id: p.id,
+        username: p.username,
+        mu: rating.mu,
+        sigma: rating.sigma,
+        currentMMR: currentShown,
+        potentialWin,
+        potentialLoss,
+        winRating: effectiveWinR,
+        loseRating: effectiveLoseR,
+      });
+    }
+
+    console.log("\n=== FINAL RESULTS ===");
+    console.log(results);
 
     return results;
   } finally {

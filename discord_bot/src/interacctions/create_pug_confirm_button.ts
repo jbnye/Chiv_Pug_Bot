@@ -1,11 +1,10 @@
 import { ButtonInteraction, EmbedBuilder } from "discord.js";
 import { redisClient } from "../redis";
 import { create_pug_backend } from "../utils/create_pug_backend";
-import { v4 as uuidv4 } from "uuid";
 import { getPlayerMMRsWithStakes } from "../utils/calculate_mmr_stakes";
 import pool from "../database/db";
 
-// Utility: ensure players exist in DB
+// Ensure players exist utility
 async function ensurePlayersExist(players: { id: string; username: string }[]) {
   const client = await pool.connect();
   try {
@@ -24,97 +23,86 @@ async function ensurePlayersExist(players: { id: string; username: string }[]) {
 
 export async function handleConfirmCaptains(interaction: ButtonInteraction) {
   try {
-    if (!interaction.deferred && !interaction.replied) {
-      await interaction.deferReply();
-    }
+    if (!interaction.deferred && !interaction.replied) await interaction.deferReply();
 
-    const parts = interaction.customId.split(":"); // ["pug", "<uuid>", "confirm_captains"]
+    const parts = interaction.customId.split(":");
     const tempPugId = parts[1];
     const tempKey = `temp_pug:${tempPugId}`;
     const tempRaw = await redisClient.get(tempKey);
-
-    if (!tempRaw) {
-      return interaction.followUp({
-        content: "⚠️ Could not find PUG in Redis.",
-        ephemeral: true,
-      });
-    }
+    if (!tempRaw) return interaction.followUp({ content: "⚠️ Could not find PUG in Redis.", ephemeral: true });
 
     const tempPug = JSON.parse(tempRaw);
-    if (!tempPug.captains.team1 || !tempPug.captains.team2) {
-      return interaction.followUp({
-        content: "⚠️ Both captains must be selected.",
-        ephemeral: true,
-      });
-    }
+    if (!tempPug.captains.team1 || !tempPug.captains.team2)
+      return interaction.followUp({ content: "⚠️ Both captains must be selected.", ephemeral: true });
 
-    // Assign captains to first element
     const team1 = [...tempPug.team1];
     const team2 = [...tempPug.team2];
 
     const t1Index = team1.findIndex((p: any) => p.id === tempPug.captains.team1);
     const t2Index = team2.findIndex((p: any) => p.id === tempPug.captains.team2);
-
     if (t1Index > 0) [team1[0], team1[t1Index]] = [team1[t1Index], team1[0]];
     if (t2Index > 0) [team2[0], team2[t2Index]] = [team2[t2Index], team2[0]];
 
-    // 0️⃣ Ensure captains exist in DB
     const allPlayers = [...team1, ...team2];
-    await ensurePlayersExist(
-      allPlayers.map((p: any) => ({ id: p.id, username: p.username }))
-    );
+    await ensurePlayersExist(allPlayers.map((p: any) => ({ id: p.id, username: p.username })));
 
-    // 1️⃣ Save PUG to backend
-    const pugToken = tempPugId; // <- use the existing UUID
     const pugDate = new Date();
     const { success, error, matchNumber } = await create_pug_backend({
-      data: {
-        pug_id: pugToken,
-        date: pugDate,
-        team1,
-        team2,
-        user_requested: tempPug.user_requested,
-      },
+      data: { pug_id: tempPugId, date: pugDate, team1, team2, user_requested: tempPug.user_requested },
     });
+    if (!success) return interaction.followUp({ content: `❌ Failed to create PUG: ${error || "unknown error"}`, ephemeral: true });
 
-    if (!success) {
-      return interaction.followUp({
-        content: `❌ Failed to create PUG: ${error || "unknown error"}`,
-        ephemeral: true,
-      });
-    }
-
-    // 2️⃣ Calculate TrueSkill
     const stakes = await getPlayerMMRsWithStakes(
       allPlayers.map((p) => ({ id: p.id, username: p.username })),
       team1.map((p) => p.id),
       team2.map((p) => p.id)
     );
 
-    const avgConservativeMMR = (team: any[]) => {
-      const teamStakes = team.map((p) => stakes.find((s) => s.id === p.id)).filter(Boolean);
+    const formatDelta = (val: number) => (val >= 0 ? `+${val}` : `${val}`);
+
+    const avgTeamMMR = (team: any[]) => {
+      const teamStakes = team.map((p) => stakes.find((s: any) => s.id === p.id)).filter(Boolean);
       if (!teamStakes.length) return 0;
-      return (
-        teamStakes.reduce((sum, s) => sum + (s!.mu - 3 * s!.sigma), 0) /
-        teamStakes.length
-      ).toFixed(1);
+      return Math.round(teamStakes.reduce((acc, s) => acc + s!.currentMMR, 0) / teamStakes.length);
     };
 
-    const team1Avg = avgConservativeMMR(team1);
-    const team2Avg = avgConservativeMMR(team2);
-
-    const buildTeamText = (team: any[]) =>
+    const buildTeamText = (team: any[], stakes: any[], team1Ids: string[], team2Ids: string[]) =>
       team
         .map((p) => {
-          const s = stakes.find((x) => x.id === p.id);
+          const s = stakes.find((x: any) => x.id === p.id);
           if (!s) return `• <@${p.id}> — *MMR unknown*`;
 
-          const conservativeMMR = Math.max(s.mu - 3 * s.sigma, 0).toFixed(1);
-          const winSign = s.potentialWin >= 0 ? `+${s.potentialWin}` : `${s.potentialWin}`;
-          const loseSign =
-            s.potentialLoss > 0 ? `+${s.potentialLoss}` : s.potentialLoss === 0 ? `-0` : `${s.potentialLoss}`;
+          const currentShown = s.currentMMR;
 
-          return `• <@${p.id}> — *${conservativeMMR}* (Win: ${winSign} / Loss: ${loseSign})`;
+          // Compute delta for win and loss previews
+          const isTeam1 = team1Ids.includes(p.id);
+
+          const afterWin = isTeam1
+            ? s.winRating  // make sure winRating was stored in getPlayerMMRsWithStakes
+            : s.winRating;
+
+          const afterLoss = isTeam1
+            ? s.loseRating // likewise, from getPlayerMMRsWithStakes
+            : s.loseRating;
+
+          const winShown = Math.floor(afterWin.mu - 3 * afterWin.sigma);
+          const lossShown = Math.floor(afterLoss.mu - 3 * afterLoss.sigma);
+
+          // Potential delta relative to currentShown
+          const potentialWin = winShown - currentShown;
+          const potentialLoss = lossShown - currentShown;
+
+          // Format signs for Discord
+          const format = (val: number) => (val > 0 ? `+${val}` : val.toString());
+
+          console.log(`PLAYER ${p.username} (${p.id})`);
+          console.log(`  Current shown: ${currentShown}`);
+          console.log(`  After Win shown: ${winShown} → delta: ${potentialWin}`);
+          console.log(`  After Loss shown: ${lossShown} → delta: ${potentialLoss}`);
+          console.log(`  TrueSkill Win: mu=${afterWin.mu.toFixed(6)}, sigma=${afterWin.sigma.toFixed(6)}`);
+          console.log(`  TrueSkill Loss: mu=${afterLoss.mu.toFixed(6)}, sigma=${afterLoss.sigma.toFixed(6)}`);
+
+          return `• <@${p.id}> — *${currentShown}* (Win: ${format(potentialWin)} / Loss: ${format(potentialLoss)})`;
         })
         .join("\n");
 
@@ -122,30 +110,22 @@ export async function handleConfirmCaptains(interaction: ButtonInteraction) {
       .setTitle(`PUG Created — Match #${matchNumber}!`)
       .setColor(0x00ae86)
       .addFields(
-        { name: `${team1[0].username}'s Team — ${team1Avg}`, value: buildTeamText(team1)},
-        { name: `${team2[0].username}'s Team — ${team2Avg}`, value: buildTeamText(team2)}
-      )
-      .setFooter({
-        text: `Match #${matchNumber} • ${pugDate.toLocaleString("en-US", {
-          month: "long",
-          day: "numeric",
-          hour: "numeric",
-          minute: "2-digit",
-          hour12: true,
-          timeZone: "America/New_York",
-        })} EST`,
-      })
+        {
+          name: `${team1[0].username}'s Team — ${avgTeamMMR(team1)}`,
+          value: buildTeamText(team1, stakes, team1.map(p => p.id), team2.map(p => p.id)) || "_No players_"
+        },
+        {
+          name: `${team2[0].username}'s Team — ${avgTeamMMR(team2)}`,
+          value: buildTeamText(team2, stakes, team1.map(p => p.id), team2.map(p => p.id)) || "_No players_"
+        }
+      );
+
     await interaction.followUp({ embeds: [embed], components: [] });
 
-    // Cleanup
     await redisClient.del(tempKey);
   } catch (err) {
     console.error("⚠️ handleConfirmCaptains error:", err);
-    if (!interaction.replied) {
-      await interaction.followUp({
-        content: "⚠️ Something went wrong confirming captains.",
-        ephemeral: true,
-      });
-    }
+    if (!interaction.replied)
+      await interaction.followUp({ content: "⚠️ Something went wrong confirming captains.", ephemeral: true });
   }
 }
