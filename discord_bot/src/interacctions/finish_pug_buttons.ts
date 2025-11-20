@@ -6,13 +6,12 @@ export async function handleFinishPugButton(interaction: ButtonInteraction) {
   try {
     await interaction.deferReply({ ephemeral: false });
 
-    const [_, teamWinner, match_id, pugId] = interaction.customId.split("_"); // finish_team1_<match_id>_<id>
-    const winnerTeam = (teamWinner === "team1" ? 1 : 2) as 1 | 2;
+    const [_, teamWinner, match_id, pugId] = interaction.customId.split("_");
+    const winnerTeam: 1 | 2 = teamWinner === "team1" ? 1 : 2;
 
-    // Build the same data object the backend expects
     const data = {
       pug_id: pugId,
-      match_id: match_id,
+      match_id,
       date: new Date().toISOString(),
       winner: winnerTeam,
       user_requested: {
@@ -23,82 +22,59 @@ export async function handleFinishPugButton(interaction: ButtonInteraction) {
       },
     };
 
-    // Call backend (this handles all MMR, Redis, SQL, captains, etc)
+    // Finish backend
     const result = await finish_pug_backend({ data });
 
     if (!result.success) {
-      await interaction.editReply({
-        content: `❌ Failed to finish PUG: ${result.error || "Unknown error"}`,
+      return interaction.editReply({
+        content: `❌ Failed to finish PUG: ${result.error ?? "Unknown error"}`,
       });
-      return;
     }
 
-    const mmrData = result.mmrChanges!;
-    const pugRedis = await redisClient.get(`finished_pugs:${pugId}`);
-    const pugData = pugRedis ? JSON.parse(pugRedis) : null;
+    // Load the stored finished PUG WITH snapshots
+    const stored = await redisClient.get(`finished_pugs:${pugId}`);
+    if (!stored) {
+      return interaction.editReply("❌ Finished PUG saved, but data could not be loaded.");
+    }
 
-    const computeMMRChange = (oldMu: number, oldSigma: number, newMu: number, newSigma: number) => {
-      // Conservative MMR (non-negative)
-      const oldHidden = Math.max(oldMu - 3 * oldSigma, 0);
-      const newHidden = Math.max(newMu - 3 * newSigma, 0);
+    const pug = JSON.parse(stored);
 
-      // Show integers
-      const oldShown = Math.floor(oldHidden);
-      const newShown = Math.floor(newHidden);
+    const playerSnapshots = pug.playerSnapshots;
+    const winnerCaptain =
+      winnerTeam === 1 ? pug.captain1.username : pug.captain2.username;
 
-      // Compute numeric delta
-      const delta = newShown - oldShown;
+    // Helper: stringify team results based on snapshot
+    const buildTeamField = (team: 1 | 2) => {
+      const teamPlayers = team === 1 ? pug.team1 : pug.team2;
 
-      return {
-        oldShown,
-        newShown,
-        delta, // number
-        hiddenOld: oldHidden,
-        hiddenNew: newHidden,
-      };
+      return teamPlayers
+        .map((player: any) => {
+          const snap = playerSnapshots.find((ps: any) => ps.id === player.id);
+          if (!snap) return `• ${player.username} — _no snapshot_`;
+
+          const outcome = snap[team === winnerTeam ? "win" : "loss"];
+
+          const before = snap.current.shown;
+          const after = outcome.shown;
+          const delta = outcome.delta;
+          const diff = delta >= 0 ? `+${delta}` : `${delta}`;
+
+          return `• ${player.username} — ${before} → ${after} (${diff})`;
+        })
+        .join("\n");
     };
 
-    // Build visual embed
-    const buildTeamField = (team: 1 | 2, winningTeam: 1 | 2) => {
-  return mmrData
-    .filter((p) => p.team === team)
-    .map((p) => {
-      const { oldShown, newShown, delta } = computeMMRChange(p.oldMu, p.oldSigma, p.newMu, p.newSigma);
-
-      const name =
-        pugData?.team1?.find((x: any) => x.id === p.playerId)?.username ||
-        pugData?.team2?.find((x: any) => x.id === p.playerId)?.username ||
-        "Unknown";
-
-      // Format delta string based on win/loss
-      // const diffStr =
-      //   team === winningTeam
-      //     ? delta >= 0
-      //       ? `+${delta}`
-      //       : `+0` 
-      //     : delta <= 0
-      //     ? `${delta}` 
-      //     : `-0`; 
-      const diffStr = delta >= 0 ? `+${delta}` : `${delta}`;
-      return `• ${name} — ${oldShown} → ${newShown} (${diffStr})`;
-    })
-    .join("\n");
-};
-    const winnerCaptain =
-      winnerTeam === 1 ? pugData.captain1.username : pugData.captain2.username;
-    const loserCaptain =
-      winnerTeam === 1 ? pugData.captain2.username : pugData.captain1.username;
-
+    // Construct embed
     const embed = new EmbedBuilder()
       .setTitle(`${winnerCaptain}'s Team Wins!`)
       .addFields(
         {
-          name: `${pugData.captain1.username}'s Team`,
-          value: buildTeamField(1, winnerTeam) || "_No players_",
+          name: `${pug.captain1.username}'s Team`,
+          value: buildTeamField(1) || "_No players_",
         },
         {
-          name: `${pugData.captain2.username}'s Team`,
-          value: buildTeamField(2, winnerTeam) || "_No players_",
+          name: `${pug.captain2.username}'s Team`,
+          value: buildTeamField(2) || "_No players_",
         }
       )
       .setFooter({ text: `Match #${match_id}` })
@@ -109,10 +85,10 @@ export async function handleFinishPugButton(interaction: ButtonInteraction) {
       components: [],
     });
 
-  } catch (error) {
-    console.error("❌ Error handling finish pug button:", error);
+  } catch (err) {
+    console.error("❌ Error finishing PUG:", err);
     await interaction.editReply({
-      content: "❌ Failed to finish PUG due to internal error.",
+      content: "❌ Failed to finish PUG due to an internal error.",
     });
   }
 }

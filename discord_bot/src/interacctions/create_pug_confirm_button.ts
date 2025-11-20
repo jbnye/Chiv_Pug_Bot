@@ -4,6 +4,14 @@ import { create_pug_backend } from "../utils/create_pug_backend";
 import { getPlayerMMRsWithStakes } from "../utils/calculate_mmr_stakes";
 import pool from "../database/db";
 
+interface predictions {
+  username: string;
+  current: { mu: number, sigma: number, shown: number };
+  win:     { mu: number, sigma: number, shown: number, deltaShown: number };
+  loss:    { mu: number, sigma: number, shown: number, deltaShown: number };
+}
+
+
 // Ensure players exist utility
 async function ensurePlayersExist(players: { id: string; username: string }[]) {
   const client = await pool.connect();
@@ -46,18 +54,52 @@ export async function handleConfirmCaptains(interaction: ButtonInteraction) {
     const allPlayers = [...team1, ...team2];
     await ensurePlayersExist(allPlayers.map((p: any) => ({ id: p.id, username: p.username })));
 
-    const pugDate = new Date();
-    const { success, error, matchNumber } = await create_pug_backend({
-      data: { pug_id: tempPugId, date: pugDate, team1, team2, user_requested: tempPug.user_requested },
-    });
-    if (!success) return interaction.followUp({ content: `❌ Failed to create PUG: ${error || "unknown error"}`, ephemeral: true });
-
-    const stakes = await getPlayerMMRsWithStakes(
+  const stakes = await getPlayerMMRsWithStakes(
       allPlayers.map((p) => ({ id: p.id, username: p.username })),
       team1.map((p) => p.id),
       team2.map((p) => p.id)
     );
 
+    const playerSnapshots = stakes.map((s) => {
+      const currentShown = Math.floor(s.currentMMR);
+
+      const winShown = Math.floor(s.winRating.mu - 3 * s.winRating.sigma);
+      const lossShown = Math.floor(s.loseRating.mu - 3 * s.loseRating.sigma);
+
+      return {
+        id: s.id,
+        username: s.username,
+
+        current: {
+          mu: s.mu,
+          sigma: s.sigma,
+          shown: currentShown
+        },
+
+        win: {
+          mu: s.winRating.mu,
+          sigma: s.winRating.sigma,
+          shown: winShown,
+          delta: winShown - currentShown
+        },
+
+        loss: {
+          mu: s.loseRating.mu,
+          sigma: s.loseRating.sigma,
+          shown: lossShown,
+          delta: lossShown - currentShown
+        }
+      };
+    });
+    
+    const pugDate = new Date();
+    const { success, error, matchNumber } = await create_pug_backend({
+      data: { pug_id: tempPugId, date: pugDate, team1, team2, user_requested: tempPug.user_requested, playerSnapshots },
+    });
+    if (!success) return interaction.followUp({ content: `❌ Failed to create PUG: ${error || "unknown error"}`, ephemeral: true });
+
+    
+    
     const formatDelta = (val: number) => (val >= 0 ? `+${val}` : `${val}`);
 
     const avgTeamMMR = (team: any[]) => {
@@ -95,12 +137,12 @@ export async function handleConfirmCaptains(interaction: ButtonInteraction) {
           // Format signs for Discord
           const format = (val: number) => (val > 0 ? `+${val}` : val.toString());
 
-          console.log(`PLAYER ${p.username} (${p.id})`);
-          console.log(`  Current shown: ${currentShown}`);
-          console.log(`  After Win shown: ${winShown} → delta: ${potentialWin}`);
-          console.log(`  After Loss shown: ${lossShown} → delta: ${potentialLoss}`);
-          console.log(`  TrueSkill Win: mu=${afterWin.mu.toFixed(6)}, sigma=${afterWin.sigma.toFixed(6)}`);
-          console.log(`  TrueSkill Loss: mu=${afterLoss.mu.toFixed(6)}, sigma=${afterLoss.sigma.toFixed(6)}`);
+          // console.log(`PLAYER ${p.username} (${p.id})`);
+          // console.log(`  Current shown: ${currentShown}`);
+          // console.log(`  After Win shown: ${winShown} → delta: ${potentialWin}`);
+          // console.log(`  After Loss shown: ${lossShown} → delta: ${potentialLoss}`);
+          // console.log(`  TrueSkill Win: mu=${afterWin.mu.toFixed(6)}, sigma=${afterWin.sigma.toFixed(6)}`);
+          // console.log(`  TrueSkill Loss: mu=${afterLoss.mu.toFixed(6)}, sigma=${afterLoss.sigma.toFixed(6)}`);
 
           return `• <@${p.id}> — *${currentShown}* (Win: ${format(potentialWin)} / Loss: ${format(potentialLoss)})`;
         })

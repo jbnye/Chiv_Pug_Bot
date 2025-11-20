@@ -21,4 +21,27 @@ export type create_pug_backend_props_type = {
         discriminator: string;
         globalName: string | null;
     };
+    playerSnapshots: {
+        id: string
+        username: string
+        current: {
+          mu: number
+          sigma: number
+          shown: number
+        },
+
+        win: {
+          mu: number
+          sigma: number
+          shown: number
+          delta: number
+        },
+
+        loss: {
+          mu: number
+          sigma: number
+          shown: number
+          delta: number
+        }
+    }[],
 } 

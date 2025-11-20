@@ -11,6 +11,7 @@ import { connectRedisAndLoad, redisClient } from "./redis";
 import { handleCaptainSelection } from "./interacctions/create_pug_select_captains"
 import {handleConfirmCaptains} from "./interacctions/create_pug_confirm_button";
 import {handleFinishPugButton} from "./interacctions/finish_pug_buttons";
+import {handleRevertPugSelect} from "./interacctions/revert_pug_select";
 
 const client = new ChivClient();
 client.commands = new Collection<string, any>();
@@ -72,17 +73,15 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
       await command.execute(interaction as ChatInputCommandInteraction);
       return;
     }
-
     if (interaction.isStringSelectMenu()) {
       const id = interaction.customId;
 
       if (id.startsWith("select_captain_")) {
-        console.log("Selected captain itneraction");
+        console.log("Selected captain interaction");
         await handleCaptainSelection(interaction);
       } else if (id === "finish_pug_select") {
         await handleFinishPugSelect(interaction);
-      }
-      else if (id === "cancel_pug_select") {
+      } else if (id === "cancel_pug_select") {
         const pugId = interaction.values[0];
 
         try {
@@ -98,10 +97,12 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
             components: [],
           });
         }
+      } else if (id === "revert_pug_select") {
+        await handleRevertPugSelect(interaction);
       }
 
       return;
-    }
+  }
 
   if (interaction.isButton()) {
     const id = interaction.customId;

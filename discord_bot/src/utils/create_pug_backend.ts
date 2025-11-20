@@ -45,14 +45,12 @@ export const create_pug_backend = async ({ data }: create_pug_backend_Props) => 
       captain1: data.team1[0],
       captain2: data.team2[0],
       user_created: data.user_requested,
-    };
-    const pug_with_matchID = {
-      ...pugRecord,
+      playerSnapshots: data.playerSnapshots,
       match_id: matchNumber
-    }
-    await redisClient.set(redisKey, JSON.stringify(pug_with_matchID), { EX: 86400 });
-    await redisClient.zAdd("pugs:by_date", [
-      { score: Date.now(), value: data.pug_id },
+    };
+    await redisClient.set(redisKey, JSON.stringify(pugRecord), { EX: 86400 });
+    await redisClient.zAdd("pug:by_match", [
+      { score: matchNumber, value: data.pug_id },
     ]);
     console.log(`✅ Created PUG saved to Redis as ${redisKey}`);
 
