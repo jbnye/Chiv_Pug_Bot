@@ -12,7 +12,7 @@ export default {
     .addIntegerOption((option) =>
       option
         .setName("match")
-        .setDescription("Match number (PUG ID)")
+        .setDescription("Match number #")
         .setRequired(true)
     ),
 
@@ -21,119 +21,158 @@ export default {
 
     const matchId = interaction.options.getInteger("match", true);
 
-    // 🔍 Fetch match info
+    console.log("========== /match_lookup START ==========");
+    console.log("Match ID requested:", matchId);
+
+    // 1️⃣ Fetch PUG record
     const pugQuery = `
       SELECT 
-        pug_id,
-        captain1_id,
-        captain2_id,
-        winner_team,
-        created_at
+      pug_id,
+      token,
+      winner_team,
+      created_at,
+      captain1_id,
+      captain2_id
       FROM pugs
       WHERE pug_id = $1;
     `;
+
     const { rows: pugRows } = await pool.query(pugQuery, [matchId]);
 
+    console.log("PUG rows returned:", pugRows);
+
     if (pugRows.length === 0) {
-      await interaction.editReply({
-        content: `❌ No match found with ID **${matchId}**.`,
-      });
-      return;
+      console.log("❌ No PUG found for ID:", matchId);
+      return interaction.editReply(`❌ No match found with ID **${matchId}**.`);
     }
 
     const pug = pugRows[0];
+    console.log("PUG Loaded:", pug);
 
-    // 🧍 Fetch all players in that match
-    const playersQuery = `
+    // 2️⃣ Fetch mmr_history by pug token
+    console.log("Looking up mmr_history rows using pug token:", pug.token);
+
+    const mmrQuery = `
       SELECT 
-        pp.player_id,
-        pp.team_number,
-        pp.is_captain,
-        pp.trueskill_before,
-        pp.trueskill_after,
-        pp.confidence_before,
-        pp.confidence_after,
-        pp.mmr_change,
-        pl.discord_username,
-        pl.discord_id
-      FROM pug_players pp
-      JOIN players pl ON pl.id = pp.player_id
-      WHERE pp.pug_id = $1
-      ORDER BY pp.team_number;
+      discord_id,
+      mu_before,
+      mu_after,
+      sigma_before,
+      sigma_after,
+      team_number,
+      won,
+      mmr_change,
+      pug_token
+      FROM mmr_history
+      WHERE pug_token = $1;
     `;
-    const { rows: playerRows } = await pool.query(playersQuery, [matchId]);
 
-    if (playerRows.length === 0) {
-      await interaction.editReply({
-        content: `❌ Match **#${matchId}** exists, but has no recorded players.`,
-      });
-      return;
+    const { rows: mmrRows } = await pool.query(mmrQuery, [pug.token]);
+
+    console.log("MMR history rows returned:", mmrRows);
+
+    if (mmrRows.length === 0) {
+      console.log("❌ No mmr_history found for pug token:", pug.token);
+      return interaction.editReply(
+        `❌ Match **#${matchId}** exists, but has no mmr_history records.`
+      );
     }
 
-    // 🧩 Split players by team
-    const team1 = playerRows.filter((p) => p.team_number === 1);
-    const team2 = playerRows.filter((p) => p.team_number === 2);
+    // 3️⃣ Fetch usernames
+    const playerIds = mmrRows.map((r) => r.discord_id);
+    console.log("Player IDs found in mmr_history:", playerIds);
 
-    // 🏆 Winner formatting
-    const winnerText =
-      pug.winner_team === 1
-        ? `**${team1.find((p) => p.is_captain)?.discord_username}'s Team Wins!**`
-        : `**${team2.find((p) => p.is_captain)?.discord_username}'s Team Wins!**`;
+    const usernameQuery = `
+      SELECT discord_id, discord_username
+      FROM players
+      WHERE discord_id = ANY($1)
+    `;
+    const { rows: usernameRows } = await pool.query(usernameQuery, [playerIds]);
 
-    // 📝 Conservative MMR calculation (floor to nearest whole number)
-    const conservativeMMR = (mu: number, sigma: number) =>
+    console.log("Username rows returned:", usernameRows);
+
+    const usernameMap = new Map(
+      usernameRows.map((r) => [r.discord_id, r.discord_username])
+    );
+
+    console.log("Username map built:", usernameMap);
+
+    // Helpers
+    const conservative = (mu:any, sigma:any) =>
       Math.max(Math.floor(mu - 3 * sigma), 0);
 
-    const formatPlayer = (p: any) => {
-      const oldMMR = conservativeMMR(p.trueskill_before, p.confidence_before);
-      const newMMR = conservativeMMR(p.trueskill_after, p.confidence_after);
-      const delta = newMMR - oldMMR;
-      const deltaText = p.won ? (delta >= 0 ? `+${delta}` : `${delta}`) : delta <= 0 ? `${delta}` : `-${delta}`;
+    // 4️⃣ Split players into teams
+    const team1 = mmrRows.filter((p) => p.team_number === 1);
+    const team2 = mmrRows.filter((p) => p.team_number === 2);
 
-      return `• **${p.discord_username}** — ${oldMMR} → ${newMMR} (${deltaText})`;
+    console.log("Team 1 players:", team1);
+    console.log("Team 2 players:", team2);
+
+    // 5️⃣ Captain detection
+    const team1Captain = team1.find((p) => p.discord_id === pug.captain1_id);
+    const team2Captain = team2.find((p) => p.discord_id === pug.captain2_id);
+
+    console.log("Detected Team 1 Captain:", team1Captain);
+    console.log("Detected Team 2 Captain:", team2Captain);
+
+    const captain1Name =
+      usernameMap.get(team1Captain?.discord_id || "") || "Team 1";
+    const captain2Name =
+      usernameMap.get(team2Captain?.discord_id || "") || "Team 2";
+
+    const formatPlayer = (p:any) => {
+      const name = usernameMap.get(p.discord_id) || `Unknown (${p.discord_id})`;
+
+      const oldMMR = conservative(p.mu_before, p.sigma_before);
+      const newMMR = conservative(p.mu_after, p.sigma_after);
+      const delta = newMMR - oldMMR;
+      const deltaText = delta >= 0 ? `+${delta}` : `${delta}`;
+
+      return `• **${name}** — ${oldMMR} → ${newMMR} (${deltaText})`;
     };
 
-    // Team names by captain
-    const team1Name =
-      team1.find((p) => p.is_captain)?.discord_username || "Team 1";
-    const team2Name =
-      team2.find((p) => p.is_captain)?.discord_username || "Team 2";
+    const team1List = team1.map(formatPlayer).join("\n");
+    const team2List = team2.map(formatPlayer).join("\n");
 
-    const team1Text = team1.map(formatPlayer).join("\n");
-    const team2Text = team2.map(formatPlayer).join("\n");
+    // 6️⃣ Winner text
+    const winnerTeam = pug.winner_team;
+    const winningCaptain =
+      winnerTeam === 1 ? captain1Name : captain2Name;
 
+    console.log("Winner team:", winnerTeam);
+
+    const winnerText = `**${winningCaptain}'s Team Won**`;
 
     const matchTime = new Intl.DateTimeFormat("en-US", {
-        month: "long",
-        day: "numeric",
-        hour: "numeric",
-        minute: "numeric",
-        hour12: true,
-        timeZone: "America/New_York",
+      month: "long",
+      day: "numeric",
+      hour: "numeric",
+      minute: "numeric",
+      hour12: true,
+      timeZone: "America/New_York",
     }).format(new Date(pug.created_at));
 
-    // 🎨 Build embed
+    // 7️⃣ Build embed
     const embed = new EmbedBuilder()
       .setTitle(`Match #${matchId}`)
       .setDescription(winnerText)
-      .setColor(pug.winner_team === 1 ? 0x3498db : 0x2ecc71)
-        .addFields(
+      .setColor(winnerTeam === 1 ? 0x3498db : 0x2ecc71)
+      .addFields(
         {
-            name: `${team1Name}'s Team`,
-            value: team1Text || "_No players?_",
-            inline: true,
+          name: `${captain1Name}'s Team`,
+          value: team1List || "_No players?_",
         },
         {
-            name: `${team2Name}'s Team`,
-            value: team2Text || "_No players?_",
-            inline: true,
+          name: `${captain2Name}'s Team`,
+          value: team2List || "_No players?_",
         }
-        )
-      
+      )
       .setFooter({
-        text: `Match ID: ${matchId} • Played: ${matchTime}`,
+        text: `Played: ${matchTime}`,
       })
       .setTimestamp(new Date(pug.created_at));
+
+    console.log("========== /match_lookup END ==========");
 
     await interaction.editReply({ embeds: [embed] });
   },

@@ -51,7 +51,7 @@ export const finish_pug_backend = async ({ data }: FinishPugBackendProps) => {
       [data.user_requested.id, data.user_requested.username, data.pug_id, "finished"]
     );
 
-    // ⭐ NEW: Update PUG row in Postgres
+    // ⭐ Update PUG row in Postgres
     await db.query(
       `
       UPDATE pugs
@@ -63,12 +63,10 @@ export const finish_pug_backend = async ({ data }: FinishPugBackendProps) => {
       [winnerTeam, data.user_requested.id, data.pug_id]
     );
 
-
-    // 5️⃣ Update normal player wins/losses for EVERY player
+    // 5️⃣ Update normal wins/losses
     const winningTeamPlayers = winnerTeam === 1 ? pug.team1 : pug.team2;
     const losingTeamPlayers = winnerTeam === 1 ? pug.team2 : pug.team1;
 
-    // Update regular wins
     for (const player of winningTeamPlayers) {
       await db.query(
         `
@@ -83,7 +81,6 @@ export const finish_pug_backend = async ({ data }: FinishPugBackendProps) => {
       );
     }
 
-    // Update regular losses
     for (const player of losingTeamPlayers) {
       await db.query(
         `
@@ -98,8 +95,7 @@ export const finish_pug_backend = async ({ data }: FinishPugBackendProps) => {
       );
     }
 
-
-    // 4️⃣ Captain stats
+    // ⭐ Captain stats
     const captain1Id = pug.captain1.id;
     const captain2Id = pug.captain2.id;
     const winningCaptain = winnerTeam === 1 ? captain1Id : captain2Id;
@@ -131,24 +127,40 @@ export const finish_pug_backend = async ({ data }: FinishPugBackendProps) => {
       [losingCaptain]
     );
 
-    const playerSnapshots = pug.playerSnapshots; 
-    const pugToken = pug.pugId; 
+    // ⭐ MMR History Generation
+    const playerSnapshots = pug.playerSnapshots;
+    const pugToken = data.pug_id;
+
+    const team1Ids = new Set(pug.team1.map((p:any) => p.id));
+    const team2Ids = new Set(pug.team2.map((p:any) => p.id));
 
     for (const snap of playerSnapshots) {
-      const isWinner = winningTeamPlayers.some((p: any) => p.id === snap.id);
+      const teamNumber = team1Ids.has(snap.id) ? 1 : 2;
+      const didWin = teamNumber === winnerTeam;
 
       const beforeMu = snap.current.mu;
       const beforeSigma = snap.current.sigma;
 
-      const afterMu = isWinner ? snap.win.mu : snap.loss.mu;
-      const afterSigma = isWinner ? snap.win.sigma : snap.loss.sigma;
+      const afterMu = didWin ? snap.win.mu : snap.loss.mu;
+      const afterSigma = didWin ? snap.win.sigma : snap.loss.sigma;
+
+      const mmrChange = afterMu - beforeMu;
 
       await db.query(
         `
-        INSERT INTO mmr_history
-          (discord_id, timestamp, mu_before, mu_after, sigma_before, sigma_after, pug_token)
-        VALUES
-          ($1, NOW(), $2, $3, $4, $5, $6)
+        INSERT INTO mmr_history (
+          discord_id,
+          timestamp,
+          mu_before,
+          mu_after,
+          sigma_before,
+          sigma_after,
+          pug_token,
+          team_number,
+          won,
+          mmr_change
+        )
+        VALUES ($1, NOW(), $2, $3, $4, $5, $6, $7, $8, $9)
         `,
         [
           snap.id,
@@ -156,13 +168,28 @@ export const finish_pug_backend = async ({ data }: FinishPugBackendProps) => {
           afterMu,
           beforeSigma,
           afterSigma,
-          pugToken 
+          pugToken,
+          teamNumber,
+          didWin,
+          mmrChange,
         ]
       );
+      await db.query(
+        `
+        UPDATE players
+        SET 
+          mu = $1,
+          sigma = $2,
+          last_match_played = NOW()
+        WHERE discord_id = $3
+        `,
+        [afterMu, afterSigma, snap.id]
+      );
     }
+
     await db.query("COMMIT");
 
-    // 5️⃣ Build a simple summary (NO MMR values)
+    // Summary message
     const getTeamNames = (teamArr: any[]) =>
       teamArr.map((p) => `• <@${p.id}>`).join("\n") || "_No players found_";
 
@@ -177,6 +204,7 @@ export const finish_pug_backend = async ({ data }: FinishPugBackendProps) => {
       `;
 
     return { success: true, summaryMessage };
+
   } catch (error) {
     console.error("Error in finish_pug_backend:", error);
     await db.query("ROLLBACK");

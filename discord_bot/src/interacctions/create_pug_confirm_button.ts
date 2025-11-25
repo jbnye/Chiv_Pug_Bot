@@ -147,7 +147,7 @@ export async function handleConfirmCaptains(interaction: ButtonInteraction) {
           return `• <@${p.id}> — *${currentShown}* (Win: ${format(potentialWin)} / Loss: ${format(potentialLoss)})`;
         })
         .join("\n");
-
+    const timestampSeconds = Math.floor(Date.now() / 1000);
     const embed = new EmbedBuilder()
       .setTitle(`PUG Created — Match #${matchNumber}!`)
       .setColor(0x00ae86)
@@ -160,7 +160,8 @@ export async function handleConfirmCaptains(interaction: ButtonInteraction) {
           name: `${team2[0].username}'s Team — ${avgTeamMMR(team2)}`,
           value: buildTeamText(team2, stakes, team1.map(p => p.id), team2.map(p => p.id)) || "_No players_"
         }
-      );
+      )
+      .setFooter({ text: `Pug Created: <t:${timestampSeconds}:F>` });
 
     await interaction.followUp({ embeds: [embed], components: [] });
 

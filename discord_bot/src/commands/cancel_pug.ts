@@ -14,9 +14,10 @@ export default {
 
   async execute(interaction: ChatInputCommandInteraction) {
     try {
+
       const keys = await redisClient.keys("pug:*");
 
-      if (keys.length === 0) {
+      if (!keys.length) {
         await interaction.reply({
           content: "❌ There are no active PUGs in Redis.",
           flags: 64,
@@ -24,16 +25,13 @@ export default {
         return;
       }
 
-      const pugs = await Promise.all(
-        keys.map(async (key) => {
-          const pugData = await redisClient.get(key);
-          return pugData ? JSON.parse(pugData) : null;
-        })
-      );
+      const pugJsonKeys: string[] = [];
+      for (const key of keys) {
+        const type = await redisClient.type(key);
+        if (type === "string") pugJsonKeys.push(key);
+      }
 
-      const validPugs = pugs.filter(Boolean);
-
-      if (validPugs.length === 0) {
+      if (!pugJsonKeys.length) {
         await interaction.reply({
           content: "❌ No valid PUGs found in Redis.",
           flags: 64,
@@ -41,8 +39,24 @@ export default {
         return;
       }
 
-      // ✅ Format each PUG nicely
-      const options = validPugs.map((pug) => {
+      const pugs = await Promise.all(
+        pugJsonKeys.map(async (key) => {
+          const pugData = await redisClient.get(key);
+          return pugData ? JSON.parse(pugData) : null;
+        })
+      );
+
+      const validPugs = pugs.filter(Boolean);
+
+      if (!validPugs.length) {
+        await interaction.reply({
+          content: "❌ No valid PUGs found in Redis.",
+          flags: 64,
+        });
+        return;
+      }
+
+      const options = validPugs.map((pug: any) => {
         const estTime = pug.date
           ? new Date(pug.date).toLocaleString("en-US", {
               timeZone: "America/New_York",
@@ -58,25 +72,26 @@ export default {
         const captain2 = pug.captain2?.username ?? "Team 2";
 
         const label = `${captain1} vs ${captain2}`;
-        const desc = `${estTime} EST\n[PUG ID: ${pug.pug_id}]`;
+        const desc = `${estTime} EST — [Match # ${pug.match_id}]`;
 
-        return new StringSelectMenuOptionBuilder()
-          .setLabel(label.slice(0, 100)) // safeguard for Discord 100-char limit
-          .setDescription(desc.slice(0, 100))
-          .setValue(pug.pug_id);
+      return new StringSelectMenuOptionBuilder()
+        .setLabel(label.slice(0, 100))
+        .setDescription(desc.slice(0, 100))
+        .setValue(JSON.stringify({ token: pug.token, match_id: pug.match_id }));
       });
+
 
       const selectMenu = new StringSelectMenuBuilder()
         .setCustomId("cancel_pug_select")
         .setPlaceholder("Select a PUG to cancel")
-        .addOptions(options.slice(0, 10)); // Discord max 25, keeping it clean at 10
+        .addOptions(options.slice(0, 10)); 
 
       const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(selectMenu);
 
       await interaction.reply({
-        content: "🗑️ **Cancel PUG** — choose one from the list below:",
+        content: "**Cancel PUG** choose one from the list below:",
         components: [row],
-        flags: 64, // ephemeral
+        flags: 64, 
       });
     } catch (error) {
       console.error("Error in /cancel_pug:", error);

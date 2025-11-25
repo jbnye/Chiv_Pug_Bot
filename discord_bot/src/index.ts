@@ -82,18 +82,17 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
       } else if (id === "finish_pug_select") {
         await handleFinishPugSelect(interaction);
       } else if (id === "cancel_pug_select") {
-        const pugId = interaction.values[0];
-
+        const { token, match_id } = JSON.parse(interaction.values[0]);
         try {
-          await redisClient.del(`pug:${pugId}`);
+          await redisClient.del(`pug:${token}`);
           await interaction.update({
-            content: `🗑️ Successfully canceled PUG **${pugId}**.`,
+            content: `Successfully canceled PUG **${match_id }**.`,
             components: [],
           });
         } catch (err) {
           console.error("Error canceling pug:", err);
           await interaction.update({
-            content: `❌ Failed to cancel PUG **${pugId}**.`,
+            content: `❌ Failed to cancel PUG **${match_id }**.`,
             components: [],
           });
         }
