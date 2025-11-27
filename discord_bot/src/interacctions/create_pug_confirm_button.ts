@@ -4,13 +4,6 @@ import { create_pug_backend } from "../utils/create_pug_backend";
 import { getPlayerMMRsWithStakes } from "../utils/calculate_mmr_stakes";
 import pool from "../database/db";
 
-interface predictions {
-  username: string;
-  current: { mu: number, sigma: number, shown: number };
-  win:     { mu: number, sigma: number, shown: number, deltaShown: number };
-  loss:    { mu: number, sigma: number, shown: number, deltaShown: number };
-}
-
 
 // Ensure players exist utility
 async function ensurePlayersExist(players: { id: string; username: string }[]) {
@@ -98,10 +91,6 @@ export async function handleConfirmCaptains(interaction: ButtonInteraction) {
     });
     if (!success) return interaction.followUp({ content: `❌ Failed to create PUG: ${error || "unknown error"}`, ephemeral: true });
 
-    
-    
-    const formatDelta = (val: number) => (val >= 0 ? `+${val}` : `${val}`);
-
     const avgTeamMMR = (team: any[]) => {
       const teamStakes = team.map((p) => stakes.find((s: any) => s.id === p.id)).filter(Boolean);
       if (!teamStakes.length) return 0;
@@ -147,9 +136,9 @@ export async function handleConfirmCaptains(interaction: ButtonInteraction) {
           return `• <@${p.id}> — *${currentShown}* (Win: ${format(potentialWin)} / Loss: ${format(potentialLoss)})`;
         })
         .join("\n");
-    const timestampSeconds = Math.floor(Date.now() / 1000);
+
     const embed = new EmbedBuilder()
-      .setTitle(`PUG Created — Match #${matchNumber}!`)
+      .setTitle(`PUG Created -> Match #${matchNumber}!`)
       .setColor(0x00ae86)
       .addFields(
         {
@@ -161,7 +150,7 @@ export async function handleConfirmCaptains(interaction: ButtonInteraction) {
           value: buildTeamText(team2, stakes, team1.map(p => p.id), team2.map(p => p.id)) || "_No players_"
         }
       )
-      .setFooter({ text: `Pug Created: <t:${timestampSeconds}:F>` });
+      .setTimestamp();
 
     await interaction.followUp({ embeds: [embed], components: [] });
 

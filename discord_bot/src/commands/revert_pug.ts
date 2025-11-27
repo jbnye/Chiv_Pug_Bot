@@ -54,7 +54,7 @@ export default {
         });
 
         return new StringSelectMenuOptionBuilder()
-          .setLabel(`Match #${match.match_id} — ${match.captain1.username} vs ${match.captain2.username}`)
+          .setLabel(`Match #${match.match_id} | ${match.captain1.username} vs ${match.captain2.username}`)
           .setDescription(`${estTime} EST`)
           .setValue(match.token);
       });

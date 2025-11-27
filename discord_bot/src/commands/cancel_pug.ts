@@ -71,8 +71,8 @@ export default {
         const captain1 = pug.captain1?.username ?? "Team 1";
         const captain2 = pug.captain2?.username ?? "Team 2";
 
-        const label = `${captain1} vs ${captain2}`;
-        const desc = `${estTime} EST — [Match # ${pug.match_id}]`;
+        const label = `Match #${pug.match_id} | ${captain1} vs ${captain2}`;
+        const desc = `${estTime} EST`;
 
       return new StringSelectMenuOptionBuilder()
         .setLabel(label.slice(0, 100))

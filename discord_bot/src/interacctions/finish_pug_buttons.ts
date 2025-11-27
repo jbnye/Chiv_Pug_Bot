@@ -66,7 +66,7 @@ export async function handleFinishPugButton(interaction: ButtonInteraction) {
 
     // Construct embed
     const embed = new EmbedBuilder()
-      .setTitle(`${winnerCaptain}'s Team Wins!`)
+      .setTitle(`Match #${match_id} -> ${winnerCaptain}'s Team Wins!`)
       .addFields(
         {
           name: `${pug.captain1.username}'s Team`,
@@ -77,7 +77,7 @@ export async function handleFinishPugButton(interaction: ButtonInteraction) {
           value: buildTeamField(2) || "_No players_",
         }
       )
-      .setFooter({ text: `Match #${match_id}` })
+      // .setFooter({ text: `Match #${match_id}` })
       .setTimestamp();
 
     await interaction.editReply({

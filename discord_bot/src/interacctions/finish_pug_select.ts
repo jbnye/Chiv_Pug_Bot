@@ -6,6 +6,7 @@ import {
 } from "discord.js";
 import { redisClient } from "../redis";
 
+
 export async function handleFinishPugSelect(interaction: StringSelectMenuInteraction) {
   try {
     await interaction.deferReply({ flags: 64 });
