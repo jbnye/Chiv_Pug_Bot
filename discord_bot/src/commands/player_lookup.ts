@@ -32,7 +32,7 @@ export default {
         losses,
         captain_wins,
         captain_losses,
-        ROUND(GREATEST((mu - 3 * sigma), 0)::numeric, 1) AS conservative_mmr
+        GREATEST((mu - 3 * sigma), 0) AS conservative_mmr
       FROM players
       WHERE discord_id = $1;
     `;
@@ -99,12 +99,11 @@ export default {
     const recentMatches =
       matchRows.length > 0
         ? matchRows
-            .map(
-              (m) =>
-                `• Match #${m.pug_id}: ${m.captain1_username} vs ${m.captain2_username} → (${m.mmr_change >= 0 ? "+" : ""}${m.mmr_change.toFixed(
-                  1
-                )})`
-            )
+            .map((m) => {
+              const result = m.won ? "W" : "L"; 
+              const mmrChange = m.mmr_change >= 0 ? `+${m.mmr_change.toFixed(2)}` : m.mmr_change.toFixed(2);
+              return `${result}: Match #${m.pug_id}: ${m.captain1_username} vs ${m.captain2_username}: (${mmrChange})`;
+            })
             .join("\n")
         : "_No recent matches found._";
 
@@ -117,7 +116,7 @@ export default {
       .addFields(
         {
           name: "Elo Overview",
-          value: `**Rating:** ${p.conservative_mmr} (${rankText})\n**TrueSkill:** μ=${p.mu.toFixed(
+          value: `**Rating:** **${Number(p.conservative_mmr).toFixed(2)}** (${rankText})\n**TrueSkill:** μ=${p.mu.toFixed(
             2
           )}, σ=${p.sigma.toFixed(2)}`,
           inline: false,

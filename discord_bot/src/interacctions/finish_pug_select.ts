@@ -3,9 +3,9 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  EmbedBuilder,
 } from "discord.js";
 import { redisClient } from "../redis";
-
 
 export async function handleFinishPugSelect(interaction: StringSelectMenuInteraction) {
   try {
@@ -24,19 +24,35 @@ export async function handleFinishPugSelect(interaction: StringSelectMenuInterac
     }
 
     const pugData = JSON.parse(pugRaw);
+
     const match_id = pugData.match_id ?? 0;
     const team1Captain = pugData.captain1?.username ?? "Team 1";
     const team2Captain = pugData.captain2?.username ?? "Team 2";
 
-    const date = new Date();
-    const estDate = date.toLocaleString("en-US", {
-      month: "short",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-      timeZone: "America/New_York",
-    });
+    const date = pugData.date ? new Date(pugData.date) : null;
+
+    const estDate = date
+      ? date.toLocaleString("en-US", {
+          month: "short",
+          day: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+          hour12: true,
+          timeZone: "America/New_York",
+        })
+      : "Unknown time";
+
+    const embed = new EmbedBuilder()
+      .setTitle(`Finish PUG — Match #${match_id}`)
+      .setColor("#2b2d31")
+      .setDescription(
+        [
+          `**${team1Captain}** vs **${team2Captain}**`,
+          `${estDate} EST`,
+          "",
+          "Select the winning team below:",
+        ].join("\n")
+      );
 
     const team1Btn = new ButtonBuilder()
       .setCustomId(`finish_team1_${match_id}_${selectedPugId}`)
@@ -50,16 +66,8 @@ export async function handleFinishPugSelect(interaction: StringSelectMenuInterac
 
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(team1Btn, team2Btn);
 
-    const messageContent = [
-      `**Match #${match_id}**`,
-      `**${team1Captain}** vs **${team2Captain}**`,
-      `${estDate} EST`,
-      "",
-      "Select the winning team below:"
-    ].join("\n");
-
     await interaction.editReply({
-      content: messageContent,
+      embeds: [embed],
       components: [row],
     });
   } catch (error) {

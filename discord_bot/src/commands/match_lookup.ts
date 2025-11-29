@@ -99,7 +99,7 @@ export default {
 
     // Helpers
     const conservative = (mu:any, sigma:any) =>
-      Math.max(Math.floor(mu - 3 * sigma), 0);
+      parseFloat(Math.max(mu - 3 * sigma, 0).toFixed(2));
 
     // 4️⃣ Split players into teams
     const team1 = mmrRows.filter((p) => p.team_number === 1);

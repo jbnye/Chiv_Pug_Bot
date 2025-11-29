@@ -68,12 +68,12 @@ export async function update_mmr_after_finish({
            VALUES ($1, $2, $3, $4)
            ON CONFLICT (discord_id) DO UPDATE
            SET discord_username = EXCLUDED.discord_username`,
-          [p.id, p.username ?? null, 25.0, 3.333]
+          [p.id, p.username ?? null, 25.0, 8.333]
         );
-        ratingMap.set(p.id, new Rating(25.0, 3.333));
+        ratingMap.set(p.id, new Rating(25.0, 8.333));
       } else {
         const mu = res.rows[0].mu ?? 25.0;
-        const sigma = res.rows[0].sigma ?? 3.333;
+        const sigma = res.rows[0].sigma ?? 8.333;
         ratingMap.set(p.id, new Rating(mu, sigma));
       }
     }
@@ -84,7 +84,7 @@ export async function update_mmr_after_finish({
        VALUES ($1, $2, $3, $4)
        ON CONFLICT (discord_id) DO UPDATE
        SET discord_username = EXCLUDED.discord_username`,
-      [verified_by.id, verified_by.username ?? null, 25.0, 3.333]
+      [verified_by.id, verified_by.username ?? null, 25.0, 8.333]
     );
     // we will store verified_by as discord_id in pugs. (DB schema expected verified_by column type to match)
 

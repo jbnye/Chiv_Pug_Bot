@@ -138,7 +138,7 @@ export async function handleConfirmCaptains(interaction: ButtonInteraction) {
         .join("\n");
 
     const embed = new EmbedBuilder()
-      .setTitle(`PUG Created -> Match #${matchNumber}!`)
+      .setTitle(`Match #${matchNumber} Created`)
       .setColor(0x00ae86)
       .addFields(
         {

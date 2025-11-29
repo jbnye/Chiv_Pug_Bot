@@ -66,7 +66,7 @@ export async function handleFinishPugButton(interaction: ButtonInteraction) {
 
     // Construct embed
     const embed = new EmbedBuilder()
-      .setTitle(`Match #${match_id} -> ${winnerCaptain}'s Team Wins!`)
+      .setTitle(`Match #${match_id}\n${winnerCaptain}'s Team Wins!`)
       .addFields(
         {
           name: `${pug.captain1.username}'s Team`,

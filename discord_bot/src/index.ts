@@ -1,7 +1,7 @@
 import dotenv from "dotenv";
 dotenv.config();
 import { 
-  Collection, Events, ChatInputCommandInteraction, GatewayIntentBits, Interaction 
+  Events, ChatInputCommandInteraction,  Interaction 
 } from "discord.js";
 import { handleFinishPugSelect } from "./interacctions/finish_pug_select";
 import fs from "fs";
@@ -13,8 +13,7 @@ import {handleConfirmCaptains} from "./interacctions/create_pug_confirm_button";
 import {handleFinishPugButton} from "./interacctions/finish_pug_buttons";
 import {handleRevertPugSelect} from "./interacctions/revert_pug_select";
 
-const client = new ChivClient();
-client.commands = new Collection<string, any>();
+const client = new ChivClient(); 
 
 // Load commands
 (async () => {
@@ -35,7 +34,7 @@ client.once(Events.ClientReady, (readyClient) => {
   console.log(`Ready! Logged in as ${readyClient.user.tag}`);
 });
 
-// Simple message handler
+
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
   if (message.content.startsWith("!ping")) {
@@ -45,13 +44,13 @@ client.on("messageCreate", async (message) => {
 
 client.on(Events.InteractionCreate, async (interaction: Interaction) => {
   try {
-    console.log("\n🟢 Interaction triggered:", {
+    console.log("\nInteraction triggered:", {
       type: interaction.type,
       isStringSelect: interaction.isStringSelectMenu?.(),
       customId: (interaction as any).customId,
       commandName: (interaction as any).commandName,
     });
-    // Autocomplete
+
     if (interaction.isAutocomplete()) {
       if (interaction.commandName === "create_pug") {
         const focused = interaction.options.getFocused().toLowerCase();
@@ -62,10 +61,10 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
           .map((m) => ({ name: m.user.username, value: m.user.id }));
         await interaction.respond(filtered);
       }
-      return; // done for autocomplete
+      return; 
     }
 
-    // Chat input commands
+
     if (interaction.isChatInputCommand()) {
       const command = client.commands.get(interaction.commandName);
       if (!command) return;
@@ -118,7 +117,6 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
   } catch (error) {
     console.error("Error handling interaction:", error);
 
-    // Only reply/followUp for interactions that support it
     if (
       interaction.isChatInputCommand() ||
       interaction.isButton() ||

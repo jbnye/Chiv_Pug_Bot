@@ -2,33 +2,53 @@ import pool from "./db";
 
 (async () => {
   try {
+    console.log("Initializing database schema...");
+
+
     await pool.query(`
-      CREATE TABLE IF NOT EXISTS players (
-          id SERIAL PRIMARY KEY,
-          discord_id TEXT UNIQUE,
-          discord_username TEXT,
-          discord_tag TEXT,
-          mu FLOAT DEFAULT 25,          -- TrueSkill rating
-          sigma FLOAT DEFAULT 3.333,    -- TrueSkill uncertainty
-          wins INT DEFAULT 0,
-          losses INT DEFAULT 0,
-          captain_wins INT DEFAULT 0,
-          captain_losses INT DEFAULT 0,
-          created_at TIMESTAMP DEFAULT NOW(),
-          last_match_played TIMESTAMP,
-          is_trusted BOOLEAN DEFAULT FALSE
+      CREATE TABLE IF NOT EXISTS public.players (
+        id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+        discord_id TEXT UNIQUE,
+        discord_username TEXT,
+        discord_tag TEXT,
+        wins INTEGER DEFAULT 0,
+        losses INTEGER DEFAULT 0,
+        captain_wins INTEGER DEFAULT 0,
+        captain_losses INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT NOW(),
+        last_match_played TIMESTAMP,
+        is_trusted BOOLEAN DEFAULT FALSE,
+        mu DOUBLE PRECISION DEFAULT 25.0,
+        sigma DOUBLE PRECISION DEFAULT 8.333,
+        updated_at TIMESTAMP DEFAULT NOW()
       );
     `);
+
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS public.pugs (
+        pug_id INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+        token TEXT NOT NULL UNIQUE,
+        captain1_id TEXT REFERENCES public.players(discord_id) ON DELETE NO ACTION,
+        captain2_id TEXT REFERENCES public.players(discord_id) ON DELETE NO ACTION,
+        winner_team INTEGER,
+        created_at TIMESTAMP DEFAULT NOW(),
+        verified_at TIMESTAMP,
+        verified_by TEXT,
+        reverted BOOLEAN DEFAULT FALSE
+      );
+    `);
+
 
     await pool.query(`
       DO $$ BEGIN
         CREATE TYPE command_action AS ENUM ('created', 'finished', 'canceled', 'reverted', 'swap');
       EXCEPTION
-        WHEN duplicate_object THEN null;
+        WHEN duplicate_object THEN NULL;
       END $$;
 
-      CREATE TABLE IF NOT EXISTS commands (
-        id SERIAL PRIMARY KEY,
+      CREATE TABLE IF NOT EXISTS public.commands (
+        id INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
         discord_id TEXT,
         discord_username TEXT,
         pug_token TEXT,
@@ -37,50 +57,26 @@ import pool from "./db";
       );
     `);
 
+
     await pool.query(`
-      CREATE TABLE IF NOT EXISTS pugs (
-        pug_id SERIAL PRIMARY KEY,
-        token TEXT UNIQUE,
-        captain1_id INT REFERENCES players(id),
-        captain2_id INT REFERENCES players(id),
-        winner_team INT,
-        created_at TIMESTAMP DEFAULT NOW(),
-        verified_at TIMESTAMP,
-        verified_by INT REFERENCES players(id)
+      CREATE TABLE IF NOT EXISTS public.mmr_history (
+        id INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+        discord_id TEXT REFERENCES public.players(discord_id) ON DELETE CASCADE,
+        timestamp TIMESTAMP DEFAULT NOW(),
+        mu_before DOUBLE PRECISION,
+        mu_after DOUBLE PRECISION,
+        sigma_before DOUBLE PRECISION,
+        sigma_after DOUBLE PRECISION,
+        pug_token TEXT REFERENCES public.pugs(token),
+        team_number INTEGER,
+        won BOOLEAN,
+        mmr_change DOUBLE PRECISION
       );
     `);
 
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS pug_players (
-          id SERIAL PRIMARY KEY,
-          pug_id INT REFERENCES pugs(pug_id),
-          player_id INT REFERENCES players(id),
-          team_number INT,
-          is_captain BOOLEAN DEFAULT FALSE,
-          mu_before FLOAT,
-          sigma_before FLOAT,
-          mu_after FLOAT,
-          sigma_after FLOAT
-      );
-    `);
-
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS mmr_history (
-          id SERIAL PRIMARY KEY,
-          player_id INT REFERENCES players(id),
-          pug_id INT REFERENCES pugs(pug_id),
-          old_mu FLOAT,
-          old_sigma FLOAT,
-          new_mu FLOAT,
-          new_sigma FLOAT,
-          delta FLOAT, -- optional, new_mu - old_mu
-          timestamp TIMESTAMP DEFAULT NOW()
-      );
-    `);
-
-    console.log("Tables initialized successfully!");
+    console.log("✅ Database schema initialized successfully.");
   } catch (error) {
-    console.error("Error creating tables:", error);
+    console.error("❌ Error creating tables:", error);
   } finally {
     await pool.end();
   }

@@ -57,8 +57,8 @@ export default {
           hour12: true,
         });
 
-        const label = `$Match #${pug.match_id} | {pug.captain1.username} vs ${pug.captain2.username}`;
-        const desc = `${estTime} EST]`;
+        const label = `Match #${pug.match_id} | ${pug.captain1.username} vs ${pug.captain2.username}`;
+        const desc = `${estTime} EST`;
 
         return new StringSelectMenuOptionBuilder()
           .setLabel(label)

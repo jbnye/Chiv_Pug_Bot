@@ -3,7 +3,7 @@ import { Rating } from "ts-trueskill";
 import { computeNewRatings } from "./trueskill";
 
 function reinflateSigma(r: Rating): Rating {
-  const inflatedSigma = Math.min(r.sigma + 0.03, 3.333);
+  const inflatedSigma = Math.min(r.sigma + 0.08, 8.333);
   return new Rating(r.mu, inflatedSigma);
 }
 
@@ -22,7 +22,7 @@ export async function getPlayerMMRsWithStakes(
     for (const p of players) {
       const res = await db.query(`SELECT mu, sigma FROM players WHERE discord_id = $1`, [p.id]);
       let mu = 25.0;
-      let sigma = 3.333;
+      let sigma = 8.333;
 
       if (res.rows.length) {
         mu = res.rows[0].mu ?? mu;
@@ -46,7 +46,7 @@ export async function getPlayerMMRsWithStakes(
     const [t1Lose_newT1, t1Lose_newT2] = computeNewRatings(team1Ratings, team2Ratings, false);
 
     const shownMMRFromMuSigma = (mu: number, sigma: number) =>
-      Math.floor(Math.max(mu - 3 * sigma, 0));
+      parseFloat(Math.max(mu - 3 * sigma, 0).toFixed(2));
 
     const results = [];
 
