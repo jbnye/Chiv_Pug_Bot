@@ -20,21 +20,13 @@ interface MMRChange {
   team: 1 | 2;
 }
 
-/**
- * Updates TrueSkill/MMR for a finished PUG.
- * - Reads PUG metadata from Redis (pug:<token> or finished_pugs:<token>)
- * - Ensures players exist (inserts defaults if missing)
- * - Computes new ratings (using ts-trueskill) BEFORE mutating the DB
- * - Applies updates: players table, pug_players, mmr_history, pugs (verified_by, winner)
- *
- * Important: all player references use discord_id (text), not the incremental players.id.
- */
+
 export async function update_mmr_after_finish({
   pug_id,
   winner_team,
   verified_by,
 }: UpdateMMRAfterFinishProps) {
-  const shownMMR = (mu: number, sigma: number) => Math.floor(Math.max(mu - 3 * sigma, 0)); // floor as requested
+  const shownMMR = (mu: number, sigma: number) => Math.floor(Math.max(mu - 3 * sigma, 0)); 
 
   const key = `pug:${pug_id}`;
   let redisData = await redisClient.get(key);
@@ -47,7 +39,7 @@ export async function update_mmr_after_finish({
   }
 
   const pug = JSON.parse(redisData);
-  const allPlayers = [...(pug.team1 ?? []), ...(pug.team2 ?? [])]; // array of { id: discord_id, username, ... }
+  const allPlayers = [...(pug.team1 ?? []), ...(pug.team2 ?? [])]; 
 
   const db = await pool.connect();
   const mmrResults: MMRChange[] = [];
@@ -55,14 +47,11 @@ export async function update_mmr_after_finish({
   try {
     await db.query("BEGIN");
 
-    // --- 1) Ensure all players exist in players table and collect their current mu/sigma ---
-    // We'll create a map: discord_id -> Rating
+
     const ratingMap = new Map<string, Rating>();
     for (const p of allPlayers) {
-      // check row
       const res = await db.query(`SELECT mu, sigma FROM players WHERE discord_id = $1`, [p.id]);
       if (res.rows.length === 0) {
-        // insert a default row (mu/sigma defaults) but do not expect returned id (we use discord_id)
         await db.query(
           `INSERT INTO players (discord_id, discord_username, mu, sigma)
            VALUES ($1, $2, $3, $4)
@@ -78,7 +67,6 @@ export async function update_mmr_after_finish({
       }
     }
 
-    // --- 2) Ensure verifier exists (create if missing) ---
     await db.query(
       `INSERT INTO players (discord_id, discord_username, mu, sigma)
        VALUES ($1, $2, $3, $4)
@@ -86,9 +74,7 @@ export async function update_mmr_after_finish({
        SET discord_username = EXCLUDED.discord_username`,
       [verified_by.id, verified_by.username ?? null, 25.0, 8.333]
     );
-    // we will store verified_by as discord_id in pugs. (DB schema expected verified_by column type to match)
 
-    // --- 3) Resolve integer pug_id from pugs.token (create if missing) ---
     let pug_sql_id: number;
     const pugRes = await db.query(`SELECT pug_id FROM pugs WHERE token = $1`, [pug_id]);
     if (pugRes.rows.length === 0) {
@@ -103,19 +89,18 @@ export async function update_mmr_after_finish({
       pug_sql_id = pugRes.rows[0].pug_id;
     }
 
-    // --- 4) Build rating arrays in team order (order must match preview) ---
+
     const team1Ratings = (pug.team1 ?? []).map((x: any) => ratingMap.get(x.id)!);
     const team2Ratings = (pug.team2 ?? []).map((x: any) => ratingMap.get(x.id)!);
 
-    // compute new ratings for the actual outcome
-    // use same ordering and call shape as preview to avoid mismatches
+
     const [team1AfterIfTeam1Win, team2AfterIfTeam1Win] = rate([team1Ratings, team2Ratings], [1, 2]);
     const [team1AfterIfTeam2Win, team2AfterIfTeam2Win] = rate([team1Ratings, team2Ratings], [2, 1]);
 
     const newTeam1Ratings = winner_team === 1 ? team1AfterIfTeam1Win : team1AfterIfTeam2Win;
     const newTeam2Ratings = winner_team === 1 ? team2AfterIfTeam1Win : team2AfterIfTeam2Win;
 
-    // --- 5) Compute per-player results BEFORE mutating DB (so preview matches final) ---
+
     const computed: Array<{
       discord_id: string;
       team: 1 | 2;
@@ -170,11 +155,9 @@ export async function update_mmr_after_finish({
       });
     }
 
-    // --- 6) Apply DB mutations using computed array (guarantees consistency) ---
     for (const row of computed) {
       const didWin = row.team === winner_team;
 
-      // Update players row (by discord_id)
       await db.query(
         `UPDATE players
          SET mu = $1, sigma = $2,
@@ -207,7 +190,6 @@ export async function update_mmr_after_finish({
         ]
       );
 
-      // Insert MMR history (discord_id)
       await db.query(
         `INSERT INTO mmr_history
            (discord_id, pug_id, old_mmr, new_mmr, change,
@@ -229,7 +211,7 @@ export async function update_mmr_after_finish({
       });
     }
 
-    // --- 7) Update pug record (mark verified, winner) ---
+
     await db.query(
       `UPDATE pugs
        SET winner_team = $1,
@@ -244,7 +226,7 @@ export async function update_mmr_after_finish({
     return { success: true, results: mmrResults };
   } catch (err) {
     await db.query("ROLLBACK");
-    console.error("❌ Error during MMR update:", err);
+    console.error("Error during MMR update:", err);
     return { success: false, error: err };
   } finally {
     db.release();

@@ -13,13 +13,13 @@ export async function handleFinishPugSelect(interaction: StringSelectMenuInterac
 
     const selectedPugId = interaction.values[0];
     if (!selectedPugId) {
-      await interaction.editReply({ content: "⚠️ No PUG selected." });
+      await interaction.editReply({ content: "No PUG selected." });
       return;
     }
 
     const pugRaw = await redisClient.get(`pug:${selectedPugId}`);
     if (!pugRaw) {
-      await interaction.editReply({ content: "⚠️ PUG not found in Redis." });
+      await interaction.editReply({ content: "PUG not found in Redis." });
       return;
     }
 
@@ -44,7 +44,7 @@ export async function handleFinishPugSelect(interaction: StringSelectMenuInterac
 
     const embed = new EmbedBuilder()
       .setTitle(`Finish PUG — Match #${match_id}`)
-      .setColor("#2b2d31")
+      .setColor("#64026dff")
       .setDescription(
         [
           `**${team1Captain}** vs **${team2Captain}**`,
@@ -72,6 +72,6 @@ export async function handleFinishPugSelect(interaction: StringSelectMenuInterac
     });
   } catch (error) {
     console.error("Error handling finish_pug select:", error);
-    await interaction.editReply({ content: "❌ Failed to load PUG for finishing." });
+    await interaction.editReply({ content: "Failed to load PUG for finishing." });
   }
 }

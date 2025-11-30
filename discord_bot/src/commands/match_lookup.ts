@@ -24,7 +24,6 @@ export default {
     console.log("========== /match_lookup START ==========");
     console.log("Match ID requested:", matchId);
 
-    // 1️⃣ Fetch PUG record
     const pugQuery = `
       SELECT 
       pug_id,
@@ -42,14 +41,14 @@ export default {
     console.log("PUG rows returned:", pugRows);
 
     if (pugRows.length === 0) {
-      console.log("❌ No PUG found for ID:", matchId);
-      return interaction.editReply(`❌ No match found with ID **${matchId}**.`);
+      console.log("No PUG found for ID:", matchId);
+      return interaction.editReply(`No match found with ID **${matchId}**.`);
     }
 
     const pug = pugRows[0];
     console.log("PUG Loaded:", pug);
 
-    // 2️⃣ Fetch mmr_history by pug token
+
     console.log("Looking up mmr_history rows using pug token:", pug.token);
 
     const mmrQuery = `
@@ -72,13 +71,12 @@ export default {
     console.log("MMR history rows returned:", mmrRows);
 
     if (mmrRows.length === 0) {
-      console.log("❌ No mmr_history found for pug token:", pug.token);
+      console.log("No mmr_history found for pug token:", pug.token);
       return interaction.editReply(
-        `❌ Match **#${matchId}** exists, but has no mmr_history records.`
+        `Match **#${matchId}** exists, but has no mmr_history records.`
       );
     }
 
-    // 3️⃣ Fetch usernames
     const playerIds = mmrRows.map((r) => r.discord_id);
     console.log("Player IDs found in mmr_history:", playerIds);
 
@@ -97,18 +95,17 @@ export default {
 
     console.log("Username map built:", usernameMap);
 
-    // Helpers
+
     const conservative = (mu:any, sigma:any) =>
       parseFloat(Math.max(mu - 3 * sigma, 0).toFixed(2));
 
-    // 4️⃣ Split players into teams
+
     const team1 = mmrRows.filter((p) => p.team_number === 1);
     const team2 = mmrRows.filter((p) => p.team_number === 2);
 
     console.log("Team 1 players:", team1);
     console.log("Team 2 players:", team2);
 
-    // 5️⃣ Captain detection
     const team1Captain = team1.find((p) => p.discord_id === pug.captain1_id);
     const team2Captain = team2.find((p) => p.discord_id === pug.captain2_id);
 
@@ -128,13 +125,13 @@ export default {
       const delta = newMMR - oldMMR;
       const deltaText = delta >= 0 ? `+${delta}` : `${delta}`;
 
-      return `• **${name}** — ${oldMMR} → ${newMMR} (${deltaText})`;
+      return `**${name}** - ${oldMMR} → ${newMMR} (${deltaText})`;
     };
 
     const team1List = team1.map(formatPlayer).join("\n");
     const team2List = team2.map(formatPlayer).join("\n");
 
-    // 6️⃣ Winner text
+
     const winnerTeam = pug.winner_team;
     const winningCaptain =
       winnerTeam === 1 ? captain1Name : captain2Name;
@@ -152,11 +149,11 @@ export default {
       timeZone: "America/New_York",
     }).format(new Date(pug.created_at));
 
-    // 7️⃣ Build embed
+
     const embed = new EmbedBuilder()
       .setTitle(`Match #${matchId}`)
       .setDescription(winnerText)
-      .setColor(winnerTeam === 1 ? 0x3498db : 0x2ecc71)
+      .setColor("#64026dff")
       .addFields(
         {
           name: `${captain1Name}'s Team`,
@@ -170,7 +167,6 @@ export default {
       .setFooter({
         text: `Played: ${matchTime}`,
       })
-      .setTimestamp(new Date(pug.created_at));
 
     console.log("========== /match_lookup END ==========");
 

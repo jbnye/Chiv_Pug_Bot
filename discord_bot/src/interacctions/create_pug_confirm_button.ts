@@ -5,7 +5,7 @@ import { getPlayerMMRsWithStakes } from "../utils/calculate_mmr_stakes";
 import pool from "../database/db";
 
 
-// Ensure players exist utility
+// Ensure players exist
 async function ensurePlayersExist(players: { id: string; username: string }[]) {
   const client = await pool.connect();
   try {
@@ -30,11 +30,11 @@ export async function handleConfirmCaptains(interaction: ButtonInteraction) {
     const tempPugId = parts[1];
     const tempKey = `temp_pug:${tempPugId}`;
     const tempRaw = await redisClient.get(tempKey);
-    if (!tempRaw) return interaction.followUp({ content: "⚠️ Could not find PUG in Redis.", ephemeral: true });
+    if (!tempRaw) return interaction.followUp({ content: "Could not find PUG in Redis.", ephemeral: true });
 
     const tempPug = JSON.parse(tempRaw);
     if (!tempPug.captains.team1 || !tempPug.captains.team2)
-      return interaction.followUp({ content: "⚠️ Both captains must be selected.", ephemeral: true });
+      return interaction.followUp({ content: "Both captains must be selected.", ephemeral: true });
 
     const team1 = [...tempPug.team1];
     const team2 = [...tempPug.team2];
@@ -89,7 +89,7 @@ export async function handleConfirmCaptains(interaction: ButtonInteraction) {
     const { success, error, matchNumber } = await create_pug_backend({
       data: { pug_id: tempPugId, date: pugDate, team1, team2, user_requested: tempPug.user_requested, playerSnapshots },
     });
-    if (!success) return interaction.followUp({ content: `❌ Failed to create PUG: ${error || "unknown error"}`, ephemeral: true });
+    if (!success) return interaction.followUp({ content: `Failed to create PUG: ${error || "unknown error"}`, flags: 64 });
 
     const avgTeamMMR = (team: any[]) => {
       const teamStakes = team.map((p) => stakes.find((s: any) => s.id === p.id)).filter(Boolean);
@@ -139,7 +139,7 @@ export async function handleConfirmCaptains(interaction: ButtonInteraction) {
 
     const embed = new EmbedBuilder()
       .setTitle(`Match #${matchNumber} Created`)
-      .setColor(0x00ae86)
+      .setColor("#64026dff")
       .addFields(
         {
           name: `${team1[0].username}'s Team — ${avgTeamMMR(team1)}`,
@@ -156,8 +156,8 @@ export async function handleConfirmCaptains(interaction: ButtonInteraction) {
 
     await redisClient.del(tempKey);
   } catch (err) {
-    console.error("⚠️ handleConfirmCaptains error:", err);
+    console.error("handleConfirmCaptains error:", err);
     if (!interaction.replied)
-      await interaction.followUp({ content: "⚠️ Something went wrong confirming captains.", ephemeral: true });
+      await interaction.followUp({ content: "Something went wrong confirming captains.", ephemeral: true });
   }
 }

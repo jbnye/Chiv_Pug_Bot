@@ -5,15 +5,15 @@ import pool from "../database/db";
 export async function handleCancelPugSelection(interaction: StringSelectMenuInteraction) {
   const { token, match_id } = JSON.parse(interaction.values[0]);
 
-  // Delete the selected PUG key
+
   const deletedCount = await redisClient.del(token);
 
   if (deletedCount === 0) {
-    await interaction.reply({ content: `❌ PUG not found or already deleted.`, ephemeral: true });
+    await interaction.reply({ content: `PUG not found or already deleted.`, ephemeral: true });
     return;
   }
 
-  // Log the cancel command in DB
+
   await pool.query(
     `INSERT INTO commands (discord_id, discord_username, pug_token, action)
      VALUES ($1, $2, $3, 'canceled')`,
@@ -21,7 +21,7 @@ export async function handleCancelPugSelection(interaction: StringSelectMenuInte
   );
 
   await interaction.reply({
-    content: `✅ Successfully canceled and deleted \`${token}\` from Redis.`,
+    content: `Successfully canceled and deleted \`${token}\` from Redis.`,
     ephemeral: true,
   });
 }

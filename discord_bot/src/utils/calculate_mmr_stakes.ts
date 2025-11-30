@@ -82,7 +82,6 @@ export async function getPlayerMMRsWithStakes(
       const potentialWin = winShownAfter - currentShown;
       const potentialLoss = loseShownAfter - currentShown;
 
-      // ---- DEBUG LOGGING ----
       console.log(`\nPLAYER ${p.username} (${p.id})`);
       console.log(
         `  Current trueskill=${rating.mu.toFixed(6)}, sigma=${rating.sigma.toFixed(6)}, shown=${currentShown}`
@@ -106,7 +105,6 @@ export async function getPlayerMMRsWithStakes(
 
       console.log(`  deltaWin=${potentialWin}, deltaLoss=${potentialLoss}`);
 
-      // ---- END DEBUG LOGGING ----
 
       results.push({
         id: p.id,

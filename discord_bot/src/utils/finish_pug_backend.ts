@@ -13,14 +13,13 @@ export const finish_pug_backend = async ({ data }: FinishPugBackendProps) => {
     const pugKey = `pug:${data.pug_id}`;
     const finishedKey = `finished_pugs:${data.pug_id}`;
 
-    // 1️⃣ Get PUG from Redis
+
     const rawPug = await redisClient.get(pugKey);
     if (!rawPug) return { success: false, error: "PUG not found in Redis" };
 
     const pug = JSON.parse(rawPug);
     const winnerTeam = data.winner;
 
-    // 2️⃣ Put finished version into Redis
     const finishedPugData = {
       ...pug,
       winner: winnerTeam,
@@ -51,7 +50,7 @@ export const finish_pug_backend = async ({ data }: FinishPugBackendProps) => {
       [data.user_requested.id, data.user_requested.username, data.pug_id, "finished"]
     );
 
-    // ⭐ Update PUG row in Postgres
+
     await db.query(
       `
       UPDATE pugs
@@ -63,7 +62,6 @@ export const finish_pug_backend = async ({ data }: FinishPugBackendProps) => {
       [winnerTeam, data.user_requested.id, data.pug_id]
     );
 
-    // 5️⃣ Update normal wins/losses
     const winningTeamPlayers = winnerTeam === 1 ? pug.team1 : pug.team2;
     const losingTeamPlayers = winnerTeam === 1 ? pug.team2 : pug.team1;
 
@@ -95,7 +93,7 @@ export const finish_pug_backend = async ({ data }: FinishPugBackendProps) => {
       );
     }
 
-    // ⭐ Captain stats
+
     const captain1Id = pug.captain1.id;
     const captain2Id = pug.captain2.id;
     const winningCaptain = winnerTeam === 1 ? captain1Id : captain2Id;
@@ -127,12 +125,12 @@ export const finish_pug_backend = async ({ data }: FinishPugBackendProps) => {
       [losingCaptain]
     );
 
-    // ⭐ MMR History Generation
+
     const playerSnapshots = pug.playerSnapshots;
     const pugToken = data.pug_id;
 
     const team1Ids = new Set(pug.team1.map((p:any) => p.id));
-    const team2Ids = new Set(pug.team2.map((p:any) => p.id));
+    // const team2Ids = new Set(pug.team2.map((p:any) => p.id));
 
     for (const snap of playerSnapshots) {
       const teamNumber = team1Ids.has(snap.id) ? 1 : 2;
@@ -189,12 +187,12 @@ export const finish_pug_backend = async ({ data }: FinishPugBackendProps) => {
 
     await db.query("COMMIT");
 
-    // Summary message
+
     const getTeamNames = (teamArr: any[]) =>
       teamArr.map((p) => `• <@${p.id}>`).join("\n") || "_No players found_";
 
-    const summaryMessage = `✅ **PUG Finished!**
-      🏆 **Winner:** Team ${winnerTeam}
+    const summaryMessage = `**PUG Finished!**
+      **Winner:** Team ${winnerTeam}
 
       **Team 1**
       ${getTeamNames(pug.team1)}

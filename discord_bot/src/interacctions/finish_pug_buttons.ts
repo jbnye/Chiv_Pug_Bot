@@ -22,19 +22,18 @@ export async function handleFinishPugButton(interaction: ButtonInteraction) {
       },
     };
 
-    // Finish backend
     const result = await finish_pug_backend({ data });
 
     if (!result.success) {
       return interaction.editReply({
-        content: `❌ Failed to finish PUG: ${result.error ?? "Unknown error"}`,
+        content: `Failed to finish PUG: ${result.error ?? "Unknown error"}`,
       });
     }
 
-    // Load the stored finished PUG WITH snapshots
+
     const stored = await redisClient.get(`finished_pugs:${pugId}`);
     if (!stored) {
-      return interaction.editReply("❌ Finished PUG saved, but data could not be loaded.");
+      return interaction.editReply("Finished PUG saved, but data could not be loaded.");
     }
 
     const pug = JSON.parse(stored);
@@ -43,14 +42,14 @@ export async function handleFinishPugButton(interaction: ButtonInteraction) {
     const winnerCaptain =
       winnerTeam === 1 ? pug.captain1.username : pug.captain2.username;
 
-    // Helper: stringify team results based on snapshot
+
     const buildTeamField = (team: 1 | 2) => {
       const teamPlayers = team === 1 ? pug.team1 : pug.team2;
 
       return teamPlayers
         .map((player: any) => {
           const snap = playerSnapshots.find((ps: any) => ps.id === player.id);
-          if (!snap) return `• ${player.username} — _no snapshot_`;
+          if (!snap) return `${player.username} — _no snapshot_`;
 
           const outcome = snap[team === winnerTeam ? "win" : "loss"];
 
@@ -59,12 +58,11 @@ export async function handleFinishPugButton(interaction: ButtonInteraction) {
           const delta = outcome.delta;
           const diff = delta >= 0 ? `+${delta}` : `${delta}`;
 
-          return `• ${player.username} — ${before} → ${after} (${diff})`;
+          return `${player.username} — ${before} → ${after} (${diff})`;
         })
         .join("\n");
     };
 
-    // Construct embed
     const embed = new EmbedBuilder()
       .setTitle(`Match #${match_id}\n${winnerCaptain}'s Team Wins!`)
       .addFields(
@@ -86,9 +84,9 @@ export async function handleFinishPugButton(interaction: ButtonInteraction) {
     });
 
   } catch (err) {
-    console.error("❌ Error finishing PUG:", err);
+    console.error("Error finishing PUG:", err);
     await interaction.editReply({
-      content: "❌ Failed to finish PUG due to an internal error.",
+      content: "Failed to finish PUG due to an internal error.",
     });
   }
 }

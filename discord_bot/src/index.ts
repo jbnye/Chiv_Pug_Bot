@@ -56,7 +56,7 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
         const focused = interaction.options.getFocused().toLowerCase();
         const members = await interaction.guild!.members.fetch();
         const filtered = members
-          .filter((m) => m.user.username.toLowerCase().includes(focused))
+          .filter((m) => m.user.username.toLowerCase().includes(focused)) 
           .first(25)
           .map((m) => ({ name: m.user.username, value: m.user.id }));
         await interaction.respond(filtered);
@@ -91,7 +91,7 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
         } catch (err) {
           console.error("Error canceling pug:", err);
           await interaction.update({
-            content: `❌ Failed to cancel PUG **${match_id }**.`,
+            content: `Failed to cancel PUG **${match_id }**.`,
             components: [],
           });
         }
@@ -106,7 +106,7 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
     const id = interaction.customId;
 
     if (id.includes(":confirm_captains")) {
-      console.log("🟩 Confirm captains button clicked");
+      console.log("Confirm captains button clicked");
       await handleConfirmCaptains(interaction);
     }
     if (interaction.customId.startsWith("finish_team1_") || interaction.customId.startsWith("finish_team2_")) {

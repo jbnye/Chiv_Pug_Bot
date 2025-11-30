@@ -21,7 +21,7 @@ export default {
 
     const user = interaction.options.getUser("player", true);
 
-    // 🧮 Fetch Player Row
+
     const playerQuery = `
       SELECT 
         discord_id,
@@ -47,7 +47,7 @@ export default {
 
     const p = playerRows[0];
 
-    // 🧮 Rank Query
+
     const rankQuery = `
       SELECT discord_id,
             RANK() OVER (ORDER BY GREATEST((mu - 3*sigma), 0) DESC) AS rank,
@@ -69,7 +69,7 @@ export default {
       ? `#${rankPosition} out of ${playerRankRow.total_players}`
       : "_Unranked_";
 
-    // 🕒 Fetch last 3 matches
+
     const matchesQuery = `
       SELECT 
           mh.pug_token,
@@ -107,10 +107,10 @@ export default {
             .join("\n")
         : "_No recent matches found._";
 
-    // 🎨 Build Embed
+
     const embed = new EmbedBuilder()
       .setTitle(`${medal} **${p.discord_username || user.username}**`)
-      .setColor(0x00ae86)
+      .setColor("#64026dff")
       .setThumbnail(user.displayAvatarURL({ size: 256 }))
       // .setDescription(`${medal} **${p.discord_username || user.username}**`)
       .addFields(

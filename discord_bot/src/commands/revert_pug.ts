@@ -14,7 +14,7 @@ export default {
 
   async execute(interaction: ChatInputCommandInteraction) {
     try {
-      // Pull last two finished match numbers (highest match_id)
+
       const recentMatchIds = await redisClient.zRange("finished_pugs:by_match", -2, -1);
 
       if (recentMatchIds.length === 0) {
@@ -25,7 +25,7 @@ export default {
         return;
       }
 
-      // Get full match objects
+
       const matches = await Promise.all(
         recentMatchIds.map(async (matchId) => {
           const data = await redisClient.get(`finished_pugs:${matchId}`);
@@ -42,7 +42,6 @@ export default {
         return;
       }
 
-      // Build dropdown options
       const options = validMatches.map((match) => {
         const estTime = new Date(match.finished_at).toLocaleString("en-US", {
           timeZone: "America/New_York",

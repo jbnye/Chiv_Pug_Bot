@@ -10,7 +10,7 @@ export const create_pug_backend = async ({ data }: create_pug_backend_Props) => 
   const db_client = await pool.connect();
 
   try {
-    // 2️⃣ Save PUG in Postgres (auto-increment pug_id) with UUID as token
+
     const res = await db_client.query(
       `
       INSERT INTO pugs (token, captain1_id, captain2_id, created_at)
@@ -21,7 +21,7 @@ export const create_pug_backend = async ({ data }: create_pug_backend_Props) => 
     );
     const matchNumber = res.rows[0].pug_id;
 
-    // 3️⃣ Save command history with UUID token
+
     await db_client.query(
       `
       INSERT INTO commands (discord_id, discord_username, pug_token, action)
@@ -35,8 +35,8 @@ export const create_pug_backend = async ({ data }: create_pug_backend_Props) => 
       ]
     );
     console.log(`✅ Created PUG Command saved to PostgreSQL`);
-        // 1️⃣ Save PUG in Redis using UUID token
-    const redisKey = `pug:${data.pug_id}`; // UUID
+
+    const redisKey = `pug:${data.pug_id}`; 
     const pugRecord = {
       token: data.pug_id, 
       date: data.date,
@@ -52,12 +52,12 @@ export const create_pug_backend = async ({ data }: create_pug_backend_Props) => 
     await redisClient.zAdd("pug:by_match", [
       { score: matchNumber, value: data.pug_id },
     ]);
-    console.log(`✅ Created PUG saved to Redis as ${redisKey}`);
+    console.log(`Created PUG saved to Redis as ${redisKey}`);
 
 
     return { success: true, key: redisKey, matchNumber };
   } catch (error: any) {
-    console.error("⚠️ Failed to save PUG:", error);
+    console.error("Failed to save PUG:", error);
     return { success: false, error: error.message || "Database/Redis error" };
   } finally {
     db_client.release();

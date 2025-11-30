@@ -12,24 +12,24 @@ export async function handleRevertPugSelect(interaction: StringSelectMenuInterac
     const rawPug = await redisClient.get(redisKey);
 
     if (!rawPug) {
-      return interaction.editReply("❌ Could not find that finished PUG in Redis.");
+      return interaction.editReply("Could not find that finished PUG in Redis.");
     }
 
     const pug = JSON.parse(rawPug);
 
     const winnerTeam = pug.winner; // 1 or 2
-    const loserTeam = winnerTeam === 1 ? 2 : 1;
+    // const loserTeam = winnerTeam === 1 ? 2 : 1;
 
     const playerSnapshots = pug.playerSnapshots;
 
-    // 1️⃣ Log revert command
+
     await dbClient.query(
       `INSERT INTO commands (discord_id, discord_username, pug_token, action)
        VALUES ($1, $2, $3, 'reverted')`,
       [interaction.user.id, interaction.user.username, pugToken]
     );
 
-    // 2️⃣ Get numeric pug_id from SQL
+
     const res = await dbClient.query(`SELECT pug_id FROM pugs WHERE token = $1`, [pugToken]);
     if (!res.rows.length) {
       return interaction.editReply("❌ PUG not found in SQL.");
@@ -37,14 +37,14 @@ export async function handleRevertPugSelect(interaction: StringSelectMenuInterac
 
     const numericPugId = res.rows[0].pug_id;
 
-    // Helper to check team
+
     const getPlayerTeam = (id: string) => {
       if (pug.team1.some((p: any) => p.id === id)) return 1;
       if (pug.team2.some((p: any) => p.id === id)) return 2;
       return null;
     };
 
-    // 3️⃣ Revert stats & MMR for each player
+
     for (const snap of playerSnapshots) {
       const playerId = snap.id;
       const team = getPlayerTeam(playerId);
@@ -81,20 +81,20 @@ export async function handleRevertPugSelect(interaction: StringSelectMenuInterac
       );
     }
 
-    // 4️⃣ Delete mmr_history for the pug
+    // Delete mmr_history for the pug
     await dbClient.query(`DELETE FROM mmr_history WHERE pug_token = $1`, [pugToken]);
 
-    // 5️⃣ Mark pug as reverted
+    // Mark pug as reverted
     await dbClient.query(`UPDATE pugs SET reverted = TRUE WHERE token = $1`, [pugToken]);
 
-    // 6️⃣ Remove redis entries
+    // Remove redis entries
     await redisClient.del(redisKey);
     await redisClient.zRem("finished_pugs:by_match", pugToken);
 
-    await interaction.editReply(`✅ Successfully reverted PUG #${numericPugId}`);
+    await interaction.editReply(`Successfully reverted PUG #${numericPugId}`);
   } catch (err) {
     console.error("Error reverting PUG:", err);
-    await interaction.editReply("❌ Unexpected error reverting PUG.");
+    await interaction.editReply("Unexpected error reverting PUG.");
   } finally {
     dbClient.release();
   }

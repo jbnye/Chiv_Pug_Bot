@@ -39,13 +39,12 @@ export default {
         ? "captain_wins"
         : "(mu - 3 * sigma)";
 
-    // 🧮 Fetch leaderboard page
     const fetchLeaderboardPage = async (page: number) => {
       const offset = (page - 1) * limit;
       const query = `
         SELECT 
           discord_username, mu, sigma, wins, losses, captain_wins, captain_losses,
-          ROUND(GREATEST((mu - 3 * sigma), 0)::numeric, 1) AS conservative_mmr
+          ROUND(GREATEST((mu - 3 * sigma), 0)::numeric, 2) AS conservative_mmr
         FROM players
         ORDER BY ${sortColumn} DESC
         LIMIT $1 OFFSET $2;
@@ -54,7 +53,6 @@ export default {
       return rows;
     };
 
-    // 🎨 Build leaderboard embed
     const renderLeaderboard = (rows: any[], page: number) => {
       const desc =
         rows
@@ -87,11 +85,10 @@ export default {
       return new EmbedBuilder()
         .setTitle(`${titleMap[sortBy as keyof typeof titleMap]} — Page ${page}`)
         .setDescription(desc)
-        .setColor(0x2f3136)
+        .setColor("#64026dff")
         .setFooter({ text: `Sorted by ${sortBy}` });
     };
 
-    // 📄 Initial render
     const rows = await fetchLeaderboardPage(page);
     const embed = renderLeaderboard(rows, page);
 
@@ -114,7 +111,6 @@ export default {
       components: [row],
     });
 
-    // 🕒 Collector for pagination
     const collector = msg.createMessageComponentCollector({
       componentType: ComponentType.Button,
       time: 60_000,
@@ -123,7 +119,7 @@ export default {
     collector.on("collect", async (btnInt) => {
       if (btnInt.user.id !== interaction.user.id) {
         await btnInt.reply({
-          content: "You can’t control this leaderboard.",
+          content: "You can't control this leaderboard.",
           ephemeral: true,
         });
         return;
@@ -138,7 +134,7 @@ export default {
           content: "No more players on this page.",
           ephemeral: true,
         });
-        if (btnInt.customId === "lb_next") page--; // revert
+        if (btnInt.customId === "lb_next") page--; 
         return;
       }
 

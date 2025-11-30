@@ -19,7 +19,7 @@ export default {
 
       if (!keys.length) {
         await interaction.reply({
-          content: "❌ There are no active PUGs in Redis.",
+          content: "There are no active PUGs in Redis.",
           flags: 64,
         });
         return;
@@ -33,7 +33,7 @@ export default {
 
       if (!pugJsonKeys.length) {
         await interaction.reply({
-          content: "❌ No valid PUGs found in Redis.",
+          content: "No valid PUGs found in Redis.",
           flags: 64,
         });
         return;
@@ -50,7 +50,7 @@ export default {
 
       if (!validPugs.length) {
         await interaction.reply({
-          content: "❌ No valid PUGs found in Redis.",
+          content: "No valid PUGs found in Redis.",
           flags: 64,
         });
         return;
@@ -96,7 +96,7 @@ export default {
     } catch (error) {
       console.error("Error in /cancel_pug:", error);
       await interaction.reply({
-        content: "❌ Failed to load PUGs.",
+        content: "Failed to load PUGs.",
         flags: 64,
       });
     }
