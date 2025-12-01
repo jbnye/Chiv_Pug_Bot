@@ -9,7 +9,7 @@ import { redisClient } from "../redis";
 
 export async function handleFinishPugSelect(interaction: StringSelectMenuInteraction) {
   try {
-    await interaction.deferReply({ flags: 64 });
+    await interaction.deferReply({ /*flags: 64*/ });
 
     const selectedPugId = interaction.values[0];
     if (!selectedPugId) {
@@ -44,7 +44,7 @@ export async function handleFinishPugSelect(interaction: StringSelectMenuInterac
 
     const embed = new EmbedBuilder()
       .setTitle(`Finish PUG — Match #${match_id}`)
-      .setColor("#64026dff")
+      .setColor(0x64026d)
       .setDescription(
         [
           `**${team1Captain}** vs **${team2Captain}**`,

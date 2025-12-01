@@ -1,27 +1,63 @@
-import { StringSelectMenuInteraction } from "discord.js";
 import { redisClient } from "../redis";
 import pool from "../database/db";
+import {
+  StringSelectMenuInteraction,
+  EmbedBuilder,
+} from "discord.js";
+
+// Type guard that ONLY checks for send(), no discord types involved
+function canSendMessages(
+  channel: any
+): channel is { send: (options: any) => Promise<any> } {
+  return !!channel && typeof channel.send === "function";
+}
 
 export async function handleCancelPugSelection(interaction: StringSelectMenuInteraction) {
-  const { token, match_id } = JSON.parse(interaction.values[0]);
+  try {
+    const { token, match_id } = JSON.parse(interaction.values[0]);
+    const redisKey = `pug:${token}`;
+
+    const deletedCount = await redisClient.del(redisKey);
+    if (deletedCount === 0) {
+      return interaction.update({
+        content: "PUG not found or already deleted.",
+        components: []
+      });
+    }
+
+    await pool.query(
+      `INSERT INTO commands (discord_id, discord_username, pug_token, action)
+       VALUES ($1, $2, $3, 'canceled')`,
+      [interaction.user.id, interaction.user.username, token]
+    );
+
+    const embed = new EmbedBuilder()
+      .setTitle(`Match # ${match_id} canceled`)
+      .setDescription(`Canceled by **${interaction.user.username}**`)
+      .setColor(0x64026d)
+      .setTimestamp();
 
 
-  const deletedCount = await redisClient.del(token);
+    await interaction.update({
+      content: "Canceling PUG...",
+      components: []
+    });
 
-  if (deletedCount === 0) {
-    await interaction.reply({ content: `PUG not found or already deleted.`, ephemeral: true });
-    return;
+    const channel = interaction.channel;
+
+    if (canSendMessages(channel)) {
+      await channel.send({ embeds: [embed] });
+    } else {
+      await interaction.followUp({ embeds: [embed] });
+    }
+
+  } catch (err) {
+    console.error("handleCancelPugSelection error:", err);
+
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply({
+        content: "Something went wrong canceling the PUG.",
+      });
+    }
   }
-
-
-  await pool.query(
-    `INSERT INTO commands (discord_id, discord_username, pug_token, action)
-     VALUES ($1, $2, $3, 'canceled')`,
-    [interaction.user.id, interaction.user.username, token]
-  );
-
-  await interaction.reply({
-    content: `Successfully canceled and deleted \`${token}\` from Redis.`,
-    ephemeral: true,
-  });
 }

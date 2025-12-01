@@ -10,7 +10,6 @@ import pool from "./db";
         id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
         discord_id TEXT UNIQUE,
         discord_username TEXT,
-        discord_tag TEXT,
         wins INTEGER DEFAULT 0,
         losses INTEGER DEFAULT 0,
         captain_wins INTEGER DEFAULT 0,

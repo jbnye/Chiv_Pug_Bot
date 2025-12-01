@@ -21,7 +21,7 @@ export async function handleCaptainSelection(interaction: StringSelectMenuIntera
     if (!tempRaw) {
       await interaction.reply({
         content: "Could not find temporary PUG data in Redis. Please recreate the PUG.",
-        ephemeral: true,
+        flags: 64,
       });
       return;
     }
@@ -49,7 +49,7 @@ export async function handleCaptainSelection(interaction: StringSelectMenuIntera
     if (!interaction.replied && !interaction.deferred) {
       await interaction.reply({
         content: "Failed to register captain selection. Try again.",
-        ephemeral: true,
+        flags: 64,
       });
     }
   }

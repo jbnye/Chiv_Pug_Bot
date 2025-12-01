@@ -19,7 +19,7 @@ export default {
 
       if (!keys.length) {
         await interaction.reply({
-          content: "There are no active PUGs in Redis.",
+          content: "There are no active PUGs.",
           flags: 64,
         });
         return;
@@ -33,7 +33,7 @@ export default {
 
       if (!pugJsonKeys.length) {
         await interaction.reply({
-          content: "No valid PUGs found in Redis.",
+          content: "There are no active PUGs.",
           flags: 64,
         });
         return;
@@ -50,7 +50,7 @@ export default {
 
       if (!validPugs.length) {
         await interaction.reply({
-          content: "No valid PUGs found in Redis.",
+          content: "There are no active PUGs.",
           flags: 64,
         });
         return;

@@ -24,7 +24,7 @@ interface TempPugData {
 export async function handleTeamMemberSelection(interaction: StringSelectMenuInteraction) {
   try {
     console.log("\n========== handleTeamMemberSelection START ==========");
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ /*flags: 64 */});
 
     if (!interaction.customId) {
       console.error("Interaction has no customId!");

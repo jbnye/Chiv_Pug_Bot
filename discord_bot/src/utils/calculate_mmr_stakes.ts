@@ -109,13 +109,23 @@ export async function getPlayerMMRsWithStakes(
       results.push({
         id: p.id,
         username: p.username,
-        mu: rating.mu,
-        sigma: rating.sigma,
-        currentMMR: currentShown,
-        potentialWin,
-        potentialLoss,
-        winRating: winInflated,
-        loseRating: loseInflated,
+        current: {
+          mu: rating.mu,
+          sigma: rating.sigma,
+          shown: currentShown,
+        },
+        win: {
+          mu: winInflated.mu,
+          sigma: winInflated.sigma,
+          shown: winShownAfter,
+          delta: potentialWin,
+        },
+        loss: {
+          mu: loseInflated.mu,
+          sigma: loseInflated.sigma,
+          shown: loseShownAfter,
+          delta: potentialLoss,
+        },
       });
     }
 

@@ -34,7 +34,7 @@ export const create_pug_backend = async ({ data }: create_pug_backend_Props) => 
         "created",
       ]
     );
-    console.log(`✅ Created PUG Command saved to PostgreSQL`);
+    console.log(`Created PUG Command saved to PostgreSQL`);
 
     const redisKey = `pug:${data.pug_id}`; 
     const pugRecord = {

@@ -55,8 +55,8 @@ export default {
         return new StringSelectMenuOptionBuilder()
           .setLabel(`Match #${match.match_id} | ${match.captain1.username} vs ${match.captain2.username}`)
           .setDescription(`${estTime} EST`)
-          .setValue(match.token);
-      });
+          .setValue(JSON.stringify({token: match.token, match_id: match.match_id}));
+        });
 
       const selectMenu = new StringSelectMenuBuilder()
         .setCustomId("revert_pug_select")
@@ -68,6 +68,7 @@ export default {
       await interaction.reply({
         content: "Select a finished match to revert:",
         components: [row],
+        flags: 64,
       });
     } catch (error) {
       console.error("Error in /revert_pug:", error);

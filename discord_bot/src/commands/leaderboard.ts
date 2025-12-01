@@ -63,30 +63,30 @@ export default {
             const losses = row.losses ?? 0;
             const capWins = row.captain_wins ?? 0;
             const capLosses = row.captain_losses ?? 0;
+            //(μ=${row.mu.toFixed(1)}, σ=${row.sigma.toFixed(1)}) 
 
             if (sortBy === "mmr") {
-              return `**${rank}.** ${username} — ${row.conservative_mmr} (μ=${row.mu.toFixed(
-                1
-              )}, σ=${row.sigma.toFixed(1)}) • ${wins}W - ${losses}L`;
+              return `**${rank}.** ${username}: **${row.conservative_mmr}** | ${wins}W - ${losses}L`;
             } else if (sortBy === "wins") {
-              return `**${rank}.** ${username} — ${wins}W - ${losses}L`;
+              return `**${rank}.** ${username}: ${wins}W - ${losses}L`;
             } else {
-              return `**${rank}.** ${username} — ${capWins}W - ${capLosses}L (Captain)`;
+              return `**${rank}.** ${username}: ${capWins}W - ${capLosses}L`;
             }
           })
           .join("\n") || "_No players found._";
 
       const titleMap = {
-        mmr: "Leaderboard (Rating)",
-        wins: "Leaderboard (Wins)",
-        captain_wins: "Leaderboard (Captain Wins)",
+        mmr: "Elo",
+        wins: "Wins",
+        captain_wins: "Captain Record",
       };
 
       return new EmbedBuilder()
-        .setTitle(`${titleMap[sortBy as keyof typeof titleMap]} — Page ${page}`)
+        .setTitle(`${titleMap[sortBy as keyof typeof titleMap]}: Page ${page}`)
         .setDescription(desc)
-        .setColor("#64026dff")
-        .setFooter({ text: `Sorted by ${sortBy}` });
+        .setColor(0x64026d)
+        .setFooter({ text: `Requested by: ${interaction.user.username}` })
+        .setTimestamp();
     };
 
     const rows = await fetchLeaderboardPage(page);
@@ -120,7 +120,7 @@ export default {
       if (btnInt.user.id !== interaction.user.id) {
         await btnInt.reply({
           content: "You can't control this leaderboard.",
-          ephemeral: true,
+          flags: 64,
         });
         return;
       }
@@ -132,7 +132,7 @@ export default {
       if (newRows.length === 0) {
         await btnInt.reply({
           content: "No more players on this page.",
-          ephemeral: true,
+          flags: 64,
         });
         if (btnInt.customId === "lb_next") page--; 
         return;

@@ -12,6 +12,7 @@ import { handleCaptainSelection } from "./interacctions/create_pug_select_captai
 import {handleConfirmCaptains} from "./interacctions/create_pug_confirm_button";
 import {handleFinishPugButton} from "./interacctions/finish_pug_buttons";
 import {handleRevertPugSelect} from "./interacctions/revert_pug_select";
+import {handleCancelPugSelection} from "./interacctions/cancel_pug_select_pug";
 
 const client = new ChivClient(); 
 
@@ -76,31 +77,22 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
       const id = interaction.customId;
 
       if (id.startsWith("select_captain_")) {
-        console.log("Selected captain interaction");
         await handleCaptainSelection(interaction);
+
       } else if (id === "finish_pug_select") {
         await handleFinishPugSelect(interaction);
+
       } else if (id === "cancel_pug_select") {
-        const { token, match_id } = JSON.parse(interaction.values[0]);
-        try {
-          await redisClient.del(`pug:${token}`);
-          await interaction.update({
-            content: `Successfully canceled PUG **${match_id }**.`,
-            components: [],
-          });
-        } catch (err) {
-          console.error("Error canceling pug:", err);
-          await interaction.update({
-            content: `Failed to cancel PUG **${match_id }**.`,
-            components: [],
-          });
-        }
-      } else if (id === "revert_pug_select") {
+        await handleCancelPugSelection(interaction); // <--- FIXED
+      } 
+      
+      else if (id === "revert_pug_select") {
         await handleRevertPugSelect(interaction);
       }
 
       return;
-  }
+    }
+
 
   if (interaction.isButton()) {
     const id = interaction.customId;
@@ -123,9 +115,9 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
       interaction.isStringSelectMenu()
     ) {
       if (interaction.deferred || interaction.replied) {
-        await interaction.followUp({ content: "Error handling interaction.", ephemeral: true });
+        await interaction.followUp({ content: "Error handling interaction.", flags: 64});
       } else {
-        await interaction.reply({ content: "Error handling interaction.", ephemeral: true });
+        await interaction.reply({ content: "Error handling interaction.", flags: 64 });
       }
     }
   }

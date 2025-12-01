@@ -4,8 +4,6 @@ import { create_pug_backend } from "../utils/create_pug_backend";
 import { getPlayerMMRsWithStakes } from "../utils/calculate_mmr_stakes";
 import pool from "../database/db";
 
-
-// Ensure players exist
 async function ensurePlayersExist(players: { id: string; username: string }[]) {
   const client = await pool.connect();
   try {
@@ -24,140 +22,123 @@ async function ensurePlayersExist(players: { id: string; username: string }[]) {
 
 export async function handleConfirmCaptains(interaction: ButtonInteraction) {
   try {
-    if (!interaction.deferred && !interaction.replied) await interaction.deferReply();
-
-    const parts = interaction.customId.split(":");
-    const tempPugId = parts[1];
+    if (!interaction.deferred && !interaction.replied) {
+      await interaction.deferReply();
+    }
+    const [, tempPugId] = interaction.customId.split(":");
     const tempKey = `temp_pug:${tempPugId}`;
-    const tempRaw = await redisClient.get(tempKey);
-    if (!tempRaw) return interaction.followUp({ content: "Could not find PUG in Redis.", ephemeral: true });
+    const raw = await redisClient.get(tempKey);
 
-    const tempPug = JSON.parse(tempRaw);
-    if (!tempPug.captains.team1 || !tempPug.captains.team2)
-      return interaction.followUp({ content: "Both captains must be selected.", ephemeral: true });
+    if (!raw) {
+      return interaction.followUp({ content: "Could not find PUG in Redis.", flags: 64 });
+    }
 
-    const team1 = [...tempPug.team1];
-    const team2 = [...tempPug.team2];
+    const tempPug = JSON.parse(raw);
 
-    const t1Index = team1.findIndex((p: any) => p.id === tempPug.captains.team1);
-    const t2Index = team2.findIndex((p: any) => p.id === tempPug.captains.team2);
-    if (t1Index > 0) [team1[0], team1[t1Index]] = [team1[t1Index], team1[0]];
-    if (t2Index > 0) [team2[0], team2[t2Index]] = [team2[t2Index], team2[0]];
+    if (!tempPug.captains.team1 || !tempPug.captains.team2) {
+      return interaction.followUp({ content: "Both captains must be selected.", flags: 64 });
+    }
+
+    let team1 = [...tempPug.team1];
+    let team2 = [...tempPug.team2];
+
+    // Move captains to index 0
+    const cap1 = team1.findIndex(p => p.id === tempPug.captains.team1);
+    const cap2 = team2.findIndex(p => p.id === tempPug.captains.team2);
+
+    if (cap1 > 0) [team1[0], team1[cap1]] = [team1[cap1], team1[0]];
+    if (cap2 > 0) [team2[0], team2[cap2]] = [team2[cap2], team2[0]];
 
     const allPlayers = [...team1, ...team2];
-    await ensurePlayersExist(allPlayers.map((p: any) => ({ id: p.id, username: p.username })));
 
-  const stakes = await getPlayerMMRsWithStakes(
-      allPlayers.map((p) => ({ id: p.id, username: p.username })),
-      team1.map((p) => p.id),
-      team2.map((p) => p.id)
+    await ensurePlayersExist(allPlayers);
+
+    const playerSnapshots = await getPlayerMMRsWithStakes(
+      allPlayers.map(p => ({ id: p.id, username: p.username })),
+      team1.map(p => p.id),
+      team2.map(p => p.id)
     );
 
-    const playerSnapshots = stakes.map((s) => {
-      const currentShown = Math.floor(s.currentMMR);
+    const findStake = (id: string) =>
+      playerSnapshots.find(p => p.id === id);
 
-      const winShown = Math.floor(s.winRating.mu - 3 * s.winRating.sigma);
-      const lossShown = Math.floor(s.loseRating.mu - 3 * s.loseRating.sigma);
+    const avgTeamMMR = (team: any[]): number => {
+      const values: number[] = team
+        .map(p => findStake(p.id)?.current.shown)
+        .filter((n): n is number => typeof n === "number");
 
-      return {
-        id: s.id,
-        username: s.username,
+      if (values.length === 0) return 0;
 
-        current: {
-          mu: s.mu,
-          sigma: s.sigma,
-          shown: currentShown
-        },
-
-        win: {
-          mu: s.winRating.mu,
-          sigma: s.winRating.sigma,
-          shown: winShown,
-          delta: winShown - currentShown
-        },
-
-        loss: {
-          mu: s.loseRating.mu,
-          sigma: s.loseRating.sigma,
-          shown: lossShown,
-          delta: lossShown - currentShown
-        }
-      };
-    });
-    
-    const pugDate = new Date();
-    const { success, error, matchNumber } = await create_pug_backend({
-      data: { pug_id: tempPugId, date: pugDate, team1, team2, user_requested: tempPug.user_requested, playerSnapshots },
-    });
-    if (!success) return interaction.followUp({ content: `Failed to create PUG: ${error || "unknown error"}`, flags: 64 });
-
-    const avgTeamMMR = (team: any[]) => {
-      const teamStakes = team.map((p) => stakes.find((s: any) => s.id === p.id)).filter(Boolean);
-      if (!teamStakes.length) return 0;
-      return Math.round(teamStakes.reduce((acc, s) => acc + s!.currentMMR, 0) / teamStakes.length);
+      const sum = values.reduce((a, b) => a + b, 0);
+      return parseFloat((sum / values.length).toFixed(2));
     };
 
-    const buildTeamText = (team: any[], stakes: any[], team1Ids: string[], team2Ids: string[]) =>
+    const buildTeamText = (team: any[]) =>
       team
-        .map((p) => {
-          const s = stakes.find((x: any) => x.id === p.id);
-          if (!s) return `• <@${p.id}> — *MMR unknown*`;
+        .map(p => {
+          const s = findStake(p.id);
+          if (!s) return `<@${p.id}> - *MMR unknown*`;
 
-          const currentShown = s.currentMMR;
+          const clampDelta = (current: number, delta: number) => {
+            if (current + delta < 0) return -current; 
+            return delta;
+          };
 
-          // Compute delta for win and loss previews
-          const isTeam1 = team1Ids.includes(p.id);
+          const winDelta = clampDelta(s.current.shown, s.win.delta);
+          const lossDelta = clampDelta(s.current.shown, s.loss.delta);
 
-          const afterWin = isTeam1
-            ? s.winRating  // make sure winRating was stored in getPlayerMMRsWithStakes
-            : s.winRating;
+          const format = (n: number) => (n >= 0 ? `${n.toFixed(2)}` : n.toFixed(2));
 
-          const afterLoss = isTeam1
-            ? s.loseRating // likewise, from getPlayerMMRsWithStakes
-            : s.loseRating;
-
-          const winShown = Math.floor(afterWin.mu - 3 * afterWin.sigma);
-          const lossShown = Math.floor(afterLoss.mu - 3 * afterLoss.sigma);
-
-          // Potential delta relative to currentShown
-          const potentialWin = winShown - currentShown;
-          const potentialLoss = lossShown - currentShown;
-
-          // Format signs for Discord
-          const format = (val: number) => (val > 0 ? `+${val}` : val.toString());
-
-          // console.log(`PLAYER ${p.username} (${p.id})`);
-          // console.log(`  Current shown: ${currentShown}`);
-          // console.log(`  After Win shown: ${winShown} → delta: ${potentialWin}`);
-          // console.log(`  After Loss shown: ${lossShown} → delta: ${potentialLoss}`);
-          // console.log(`  TrueSkill Win: mu=${afterWin.mu.toFixed(6)}, sigma=${afterWin.sigma.toFixed(6)}`);
-          // console.log(`  TrueSkill Loss: mu=${afterLoss.mu.toFixed(6)}, sigma=${afterLoss.sigma.toFixed(6)}`);
-
-          return `• <@${p.id}> — *${currentShown}* (Win: ${format(potentialWin)} / Loss: ${format(potentialLoss)})`;
+          return `<@${p.id}> - **${s.current.shown.toFixed(2)}** (Win: +${format(winDelta)} / Loss: ${format(lossDelta)})`;
         })
         .join("\n");
 
+    const pugDate = new Date();
+    const { success, error, matchNumber } = await create_pug_backend({
+      data: {
+        pug_id: tempPugId,
+        date: pugDate,
+        team1,
+        team2,
+        user_requested: tempPug.user_requested,
+        playerSnapshots
+      }
+    });
+
+    if (!success) {
+      return interaction.followUp({
+        content: `Failed to create PUG: ${error ?? "unknown error"}`,
+        flags: 64 
+      });
+    }
+
     const embed = new EmbedBuilder()
       .setTitle(`Match #${matchNumber} Created`)
-      .setColor("#64026dff")
+      .setColor(0x64026d)
       .addFields(
         {
           name: `${team1[0].username}'s Team — ${avgTeamMMR(team1)}`,
-          value: buildTeamText(team1, stakes, team1.map(p => p.id), team2.map(p => p.id)) || "_No players_"
+          value: buildTeamText(team1)
         },
         {
           name: `${team2[0].username}'s Team — ${avgTeamMMR(team2)}`,
-          value: buildTeamText(team2, stakes, team1.map(p => p.id), team2.map(p => p.id)) || "_No players_"
+          value: buildTeamText(team2)
         }
       )
+      .setFooter({text: `Created by: ${interaction.user.username}`})
       .setTimestamp();
 
     await interaction.followUp({ embeds: [embed], components: [] });
 
     await redisClient.del(tempKey);
+
   } catch (err) {
     console.error("handleConfirmCaptains error:", err);
-    if (!interaction.replied)
-      await interaction.followUp({ content: "Something went wrong confirming captains.", ephemeral: true });
+    if (!interaction.replied) {
+      await interaction.followUp({
+        content: "Something went wrong confirming captains.",
+        flags: 64 
+      });
+    }
   }
 }

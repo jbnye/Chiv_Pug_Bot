@@ -4,11 +4,6 @@ interface ValidateTeamsInput {
   team1: string[];
   team2: string[];
 }
-
-/**
- * Validate teams before continuing.
- * Returns true if there IS an error (so caller should stop).
- */
 export async function validatePugTeams(
   interaction: StringSelectMenuInteraction,
   teams: ValidateTeamsInput,
@@ -51,6 +46,6 @@ export async function validatePugTeams(
     return true;
   }
 
-  console.log("✅ [validatePugTeams] PASS");
+  console.log("[validatePugTeams] PASS");
   return false; 
 }

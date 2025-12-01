@@ -110,7 +110,7 @@ export default {
 
     const embed = new EmbedBuilder()
       .setTitle(`${medal} **${p.discord_username || user.username}**`)
-      .setColor("#64026dff")
+      .setColor(0x64026d)
       .setThumbnail(user.displayAvatarURL({ size: 256 }))
       // .setDescription(`${medal} **${p.discord_username || user.username}**`)
       .addFields(

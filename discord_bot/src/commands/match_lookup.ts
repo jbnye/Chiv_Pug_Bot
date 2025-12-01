@@ -153,7 +153,7 @@ export default {
     const embed = new EmbedBuilder()
       .setTitle(`Match #${matchId}`)
       .setDescription(winnerText)
-      .setColor("#64026dff")
+      .setColor(0x64026d)
       .addFields(
         {
           name: `${captain1Name}'s Team`,

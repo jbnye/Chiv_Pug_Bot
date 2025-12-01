@@ -1,42 +1,50 @@
-import { StringSelectMenuInteraction } from "discord.js";
+import { EmbedBuilder, StringSelectMenuInteraction } from "discord.js";
 import { redisClient } from "../redis";
 import pool from "../database/db";
 
-export async function handleRevertPugSelect(interaction: StringSelectMenuInteraction) {
-  const pugToken = interaction.values[0];
-  await interaction.deferReply({ flags: 64 });
 
-  const dbClient = await pool.connect();
+function canSendMessages(
+  channel: any
+): channel is { send: (options: any) => Promise<any> } {
+  return !!channel && typeof channel.send === "function";
+}
+
+export async function handleRevertPugSelect(interaction: StringSelectMenuInteraction) {
+  const { token, match_id } = JSON.parse(interaction.values[0]);
+  const numericPugId = match_id;
   try {
-    const redisKey = `finished_pugs:${pugToken}`;
+    const dbClient = await pool.connect();
+
+    const redisKey = `finished_pugs:${token}`;
     const rawPug = await redisClient.get(redisKey);
 
     if (!rawPug) {
-      return interaction.editReply("Could not find that finished PUG in Redis.");
+      return interaction.update({
+        content: "Could not find that finished PUG in Redis.",
+        components: []
+      });
     }
 
     const pug = JSON.parse(rawPug);
 
-    const winnerTeam = pug.winner; // 1 or 2
-    // const loserTeam = winnerTeam === 1 ? 2 : 1;
-
+    const winnerTeam = pug.winner;
     const playerSnapshots = pug.playerSnapshots;
-
 
     await dbClient.query(
       `INSERT INTO commands (discord_id, discord_username, pug_token, action)
        VALUES ($1, $2, $3, 'reverted')`,
-      [interaction.user.id, interaction.user.username, pugToken]
+      [interaction.user.id, interaction.user.username, token]
     );
 
+    // const res = await dbClient.query(`SELECT pug_id FROM pugs WHERE token = $1`, [token]);
+    // if (!res.rows.length) {
+    //   return interaction.update({
+    //     content: "PUG not found in SQL.",
+    //     components: []
+    //   });
+    // }
 
-    const res = await dbClient.query(`SELECT pug_id FROM pugs WHERE token = $1`, [pugToken]);
-    if (!res.rows.length) {
-      return interaction.editReply("❌ PUG not found in SQL.");
-    }
-
-    const numericPugId = res.rows[0].pug_id;
-
+    // const numericPugId = res.rows[0].pug_id;
 
     const getPlayerTeam = (id: string) => {
       if (pug.team1.some((p: any) => p.id === id)) return 1;
@@ -44,7 +52,7 @@ export async function handleRevertPugSelect(interaction: StringSelectMenuInterac
       return null;
     };
 
-
+    // revert stats
     for (const snap of playerSnapshots) {
       const playerId = snap.id;
       const team = getPlayerTeam(playerId);
@@ -54,10 +62,6 @@ export async function handleRevertPugSelect(interaction: StringSelectMenuInterac
       const isCaptain =
         pug.captain1.id === playerId ||
         pug.captain2.id === playerId;
-
-      // we revert back to the "current" snapshot from before the match
-      const oldMu = snap.current.mu;
-      const oldSigma = snap.current.sigma;
 
       await dbClient.query(
         `UPDATE players
@@ -70,8 +74,8 @@ export async function handleRevertPugSelect(interaction: StringSelectMenuInterac
            captain_losses = captain_losses - $6
          WHERE discord_id = $7`,
         [
-          oldMu,
-          oldSigma,
+          snap.current.mu,
+          snap.current.sigma,
           isWinner ? 1 : 0,
           !isWinner ? 1 : 0,
           isCaptain && isWinner ? 1 : 0,
@@ -81,21 +85,40 @@ export async function handleRevertPugSelect(interaction: StringSelectMenuInterac
       );
     }
 
-    // Delete mmr_history for the pug
-    await dbClient.query(`DELETE FROM mmr_history WHERE pug_token = $1`, [pugToken]);
 
-    // Mark pug as reverted
-    await dbClient.query(`UPDATE pugs SET reverted = TRUE WHERE token = $1`, [pugToken]);
+    await dbClient.query(`DELETE FROM mmr_history WHERE pug_token = $1`, [token]);
+    await dbClient.query(`UPDATE pugs SET reverted = TRUE WHERE token = $1`, [token]);
 
-    // Remove redis entries
     await redisClient.del(redisKey);
-    await redisClient.zRem("finished_pugs:by_match", pugToken);
+    await redisClient.zRem("finished_pugs:by_match", token);
 
-    await interaction.editReply(`Successfully reverted PUG #${numericPugId}`);
+    await interaction.update({
+      content: `Reverting PUG #${numericPugId}...`,
+      components: []
+    });
+
+    // build repost embed
+    const embed = new EmbedBuilder()
+      .setTitle(`Match #${numericPugId} Reverted`)
+      .setDescription(`Reverted by ${interaction.user.username}`)
+      .setColor(0x64026d)
+      .setTimestamp();
+
+    const channel = interaction.channel;
+
+    if (canSendMessages(channel)) {
+      await channel.send({ embeds: [embed] });
+    } else {
+      await interaction.followUp({ embeds: [embed] });
+    }
+
   } catch (err) {
     console.error("Error reverting PUG:", err);
-    await interaction.editReply("Unexpected error reverting PUG.");
-  } finally {
-    dbClient.release();
+
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply({
+        content: "Unexpected error reverting PUG.",
+      });
+    }
   }
 }
