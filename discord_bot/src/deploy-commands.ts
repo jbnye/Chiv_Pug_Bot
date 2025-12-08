@@ -9,6 +9,8 @@ const clientId = process.env.CLIENT_ID!;
 const guildId = process.env.GUILD_ID!;
 const token = process.env.DISCORD_TOKEN!;
 
+
+
 const client = new ChivClient();
 client.commands = new Collection();
 const commands: RESTPostAPIApplicationCommandsJSONBody[] = [];

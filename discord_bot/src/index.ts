@@ -13,7 +13,7 @@ import {handleConfirmCaptains} from "./interacctions/create_pug_confirm_button";
 import {handleFinishPugButton} from "./interacctions/finish_pug_buttons";
 import {handleRevertPugSelect} from "./interacctions/revert_pug_select";
 import {handleCancelPugSelection} from "./interacctions/cancel_pug_select_pug";
-
+const allowed_guilds = new Set(process.env.ALLOWED_GUILDS?.split(",") ?? []);
 const client = new ChivClient(); 
 
 // Load commands
@@ -44,6 +44,11 @@ client.on("messageCreate", async (message) => {
 });
 
 client.on(Events.InteractionCreate, async (interaction: Interaction) => {
+
+  if (!interaction.guildId || !allowed_guilds.has(interaction.guildId)) {
+    return;
+  }
+
   try {
     console.log("\nInteraction triggered:", {
       type: interaction.type,
