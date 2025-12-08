@@ -1,6 +1,6 @@
 import pool from "./db";
 
-(async () => {
+export async function createDatabase() {
   try {
     console.log("Initializing database schema...");
 
@@ -79,4 +79,4 @@ import pool from "./db";
   } finally {
     await pool.end();
   }
-})();
+}

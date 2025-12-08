@@ -7,12 +7,14 @@ import { handleFinishPugSelect } from "./interacctions/finish_pug_select";
 import fs from "fs";
 import path from "path";
 import { ChivClient } from "./types/client";
-import { connectRedisAndLoad, redisClient } from "./redis";
+import { connectRedisAndLoad,} from "./redis";
 import { handleCaptainSelection } from "./interacctions/create_pug_select_captains"
 import {handleConfirmCaptains} from "./interacctions/create_pug_confirm_button";
 import {handleFinishPugButton} from "./interacctions/finish_pug_buttons";
 import {handleRevertPugSelect} from "./interacctions/revert_pug_select";
 import {handleCancelPugSelection} from "./interacctions/cancel_pug_select_pug";
+import { createDatabase } from "./database/init_db";
+import { create } from "domain";
 const allowed_guilds = new Set(process.env.ALLOWED_GUILDS?.split(",") ?? []);
 const client = new ChivClient(); 
 
@@ -34,6 +36,10 @@ const client = new ChivClient();
 client.once(Events.ClientReady, (readyClient) => {
   console.log(`Ready! Logged in as ${readyClient.user.tag}`);
 });
+
+(async () => {
+  await createDatabase();
+})();
 
 
 client.on("messageCreate", async (message) => {
@@ -88,7 +94,7 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
         await handleFinishPugSelect(interaction);
 
       } else if (id === "cancel_pug_select") {
-        await handleCancelPugSelection(interaction); // <--- FIXED
+        await handleCancelPugSelection(interaction); 
       } 
       
       else if (id === "revert_pug_select") {
