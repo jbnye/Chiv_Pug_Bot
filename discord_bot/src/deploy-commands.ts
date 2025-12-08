@@ -8,7 +8,7 @@ dotenv.config();
 const clientId = process.env.CLIENT_ID!;
 const guildId = process.env.GUILD_ID!;
 const token = process.env.DISCORD_TOKEN!;
-
+const allowedGuilds = process.env.ALLOWED_GUILDS?.split(",") ?? [];
 
 
 const client = new ChivClient();
@@ -32,12 +32,16 @@ const commands: RESTPostAPIApplicationCommandsJSONBody[] = [];
 
   try {
     console.log(`Started refreshing ${commands.length} application (/) commands.`);
-    const data: any = await rest.put(
-      Routes.applicationGuildCommands(clientId, guildId),
-      { body: commands }
-    );
+    for (const guildId of allowedGuilds) {
+      if (!guildId) continue;
 
-    console.log(`Successfully reloaded ${data.length} application (/) commands.`);
+      const data: any = await rest.put(
+        Routes.applicationGuildCommands(clientId, guildId),
+        { body: commands }
+      );
+
+      console.log(`Commands deployed to guild ${guildId} (${data.length} cmds)`);
+    }
   } catch (error) {
     console.error("Error reloading commands:", error);
   }
