@@ -73,9 +73,9 @@ export async function createDatabase() {
       );
     `);
 
-    console.log("✅ Database schema initialized successfully.");
+    console.log("Database schema initialized successfully.");
   } catch (error) {
-    console.error("❌ Error creating tables:", error);
+    console.error("Error creating tables:", error);
   } finally {
     await pool.end();
   }

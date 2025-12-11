@@ -62,7 +62,6 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
       customId: (interaction as any).customId,
       commandName: (interaction as any).commandName,
     });
-
     if (interaction.isAutocomplete()) {
       if (interaction.commandName === "create_pug") {
         const focused = interaction.options.getFocused().toLowerCase();
