@@ -54,6 +54,7 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
   if (!interaction.guildId || !allowed_guilds.has(interaction.guildId)) {
     return;
   }
+  
 
   try {
     console.log("\nInteraction triggered:", {
@@ -79,6 +80,10 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
     if (interaction.isChatInputCommand()) {
       const command = client.commands.get(interaction.commandName);
       if (!command) return;
+
+      if (!interaction.deferred && !interaction.replied) {
+        await interaction.deferReply(); 
+      }
 
       await command.execute(interaction as ChatInputCommandInteraction);
       return;
