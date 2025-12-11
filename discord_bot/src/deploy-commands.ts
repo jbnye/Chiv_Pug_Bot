@@ -17,7 +17,7 @@ const commands: RESTPostAPIApplicationCommandsJSONBody[] = [];
 
 (async () => {
   const commandsPath = path.join(__dirname, "commands");
-  const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith(".ts"));
+  const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith(".ts") || file.endsWith(".js")) ;
 
   for (const file of commandFiles) {
     const commandModule = await import(path.join(commandsPath, file));

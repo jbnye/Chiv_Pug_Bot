@@ -22,7 +22,9 @@ const client = new ChivClient();
 // Load commands
 (async () => {
   const commandsPath = path.join(__dirname, "commands");
-  const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith(".ts"));
+  const commandFiles = fs
+    .readdirSync(commandsPath)
+    .filter(file => file.endsWith(".js") || file.endsWith(".ts"));
 
   for (const file of commandFiles) {
     const command = await import(path.join(commandsPath, file));
