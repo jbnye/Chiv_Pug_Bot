@@ -100,20 +100,16 @@ export default {
       matchRows.length > 0
         ? matchRows
             .map((m) => {
-              const before = Number(p.conservative_mmr); // current shown MMR before this match
+              const before = Number(p.conservative_mmr); 
               let after = before + m.mmr_change;
 
-              // Clamp to zero so shown MMR never goes negative
               if (after < 0) after = 0;
 
-              // Determine delta text for display
               let deltaText: string;
               if (m.won) {
-                // Win → always +delta
                 deltaText = `+${Math.max(m.mmr_change, 0).toFixed(2)}`;
               } else {
-                // Loss → always negative, show -0 if clamped
-                const rawDelta = before - after; // how much was actually subtracted
+                const rawDelta = before - after; 
                 deltaText = `-${rawDelta.toFixed(2)}`;
               }
 
