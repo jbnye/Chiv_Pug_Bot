@@ -4,7 +4,7 @@ import { redisClient } from "../redis";
 
 export async function handleFinishPugButton(interaction: ButtonInteraction) {
   try {
-    await interaction.deferReply({ /*flags: 64,*/ });
+    await interaction.deferReply({ });
 
     const [_, teamWinner, match_id, pugId] = interaction.customId.split("_");
     const winnerTeam: 1 | 2 = teamWinner === "team1" ? 1 : 2;
@@ -49,7 +49,7 @@ export async function handleFinishPugButton(interaction: ButtonInteraction) {
       return teamPlayers
         .map((player: any) => {
           const snap = playerSnapshots.find((ps: any) => ps.id === player.id);
-          if (!snap) return `${player.username} — _MMR unknown_`;
+          if (!snap) return `${player.username} - _MMR unknown_`;
 
           const before = snap.current.shown;
           const outcome = team === winnerTeam ? snap.win : snap.loss;
@@ -59,12 +59,11 @@ export async function handleFinishPugButton(interaction: ButtonInteraction) {
             return delta;
           };
 
-          const delta = clampDelta(before, outcome.delta);
-          const after = before + delta;
+          const deltaNum = Number(clampDelta(before, outcome.delta)); 
+          const after = before + deltaNum;
+          const diff = deltaNum >= 0 ? `+${deltaNum.toFixed(2)}` : deltaNum.toFixed(2);
 
-          const diff = delta >= 0 ? `+${delta.toFixed(2)}` : delta.toFixed(2);
-
-          return `<@${player.id}> — **${before.toFixed(2)}** → **${after.toFixed(2)}** (${diff})`;
+          return `<@${player.id}> - **${before.toFixed(2)}** → **${after.toFixed(2)}** (${diff})`;
         })
         .join("\n");
     };
@@ -86,9 +85,10 @@ export async function handleFinishPugButton(interaction: ButtonInteraction) {
       .setFooter({ text: `Recorded by: ${interaction.user.username}` })
       .setTimestamp();
 
-    await interaction.editReply({
+    await interaction.followUp({
       embeds: [embed],
       components: [],
+      ephemeral: false,
     });
 
   } catch (err) {

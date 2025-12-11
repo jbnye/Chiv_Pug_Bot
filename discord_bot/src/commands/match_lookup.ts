@@ -123,7 +123,8 @@ export default {
       const oldMMR = conservative(p.mu_before, p.sigma_before);
       const newMMR = conservative(p.mu_after, p.sigma_after);
       const delta = newMMR - oldMMR;
-      const deltaText = delta >= 0 ? `+${delta}` : `${delta}`;
+      
+      const deltaText = delta >= 0 ? `+${delta.toFixed(2)}` : `${delta.toFixed(2)}`;
 
       return `**${name}** - ${oldMMR} → ${newMMR} (${deltaText})`;
     };

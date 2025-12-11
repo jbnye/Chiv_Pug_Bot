@@ -38,7 +38,6 @@ export async function handleCaptainSelection(interaction: StringSelectMenuIntera
     console.log(`Setting ${team} captain to`, selectedCaptainId);
 
     await redisClient.set(tempKey, JSON.stringify(tempPug), { EX: 600 });
-
     await interaction.deferUpdate();
 
     console.log("Saved updated temp pug to Redis");

@@ -5,7 +5,7 @@ import {
   EmbedBuilder,
 } from "discord.js";
 
-// Type guard that ONLY checks for send(), no discord types involved
+
 function canSendMessages(
   channel: any
 ): channel is { send: (options: any) => Promise<any> } {

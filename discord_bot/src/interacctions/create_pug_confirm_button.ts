@@ -22,9 +22,14 @@ async function ensurePlayersExist(players: { id: string; username: string }[]) {
 
 export async function handleConfirmCaptains(interaction: ButtonInteraction) {
   try {
-    if (!interaction.deferred && !interaction.replied) {
-      await interaction.deferReply();
-    }
+    // if (!interaction.deferred && !interaction.replied) {
+    //   await interaction.deferReply();
+    // }
+
+    await interaction.update({
+      content: "Creating PUG...",
+      components: []
+    });
     const [, tempPugId] = interaction.customId.split(":");
     const tempKey = `temp_pug:${tempPugId}`;
     const raw = await redisClient.get(tempKey);
@@ -111,17 +116,16 @@ export async function handleConfirmCaptains(interaction: ButtonInteraction) {
         flags: 64 
       });
     }
-
     const embed = new EmbedBuilder()
       .setTitle(`Match #${matchNumber} Created`)
       .setColor(0x64026d)
       .addFields(
         {
-          name: `${team1[0].username}'s Team — ${avgTeamMMR(team1)}`,
+          name: `${team1[0].username}'s Team - ${avgTeamMMR(team1)}`,
           value: buildTeamText(team1)
         },
         {
-          name: `${team2[0].username}'s Team — ${avgTeamMMR(team2)}`,
+          name: `${team2[0].username}'s Team - ${avgTeamMMR(team2)}`,
           value: buildTeamText(team2)
         }
       )
@@ -129,7 +133,6 @@ export async function handleConfirmCaptains(interaction: ButtonInteraction) {
       .setTimestamp();
 
     await interaction.followUp({ embeds: [embed], components: [] });
-
     await redisClient.del(tempKey);
 
   } catch (err) {

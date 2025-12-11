@@ -107,17 +107,6 @@ export async function handleTeamMemberSelection(interaction: StringSelectMenuInt
 
     if (hasError) return; 
 
-
-    if (tempPug.team1?.length && tempPug.team2?.length) {
-      await interaction.editReply({
-        content: `Team members selected for both teams!\nNow choose captains using the select menus.`,
-      });
-    } else {
-      await interaction.editReply({
-        content: `${team} members saved! Please select the other team's members next.`,
-      });
-    }
-
     console.log("========== handleTeamMemberSelection END ==========\n");
   } catch (error) {
     console.error("Error in handleTeamMemberSelection:", error);

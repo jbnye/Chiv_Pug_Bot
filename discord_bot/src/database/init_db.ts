@@ -77,6 +77,6 @@ export async function createDatabase() {
   } catch (error) {
     console.error("Error creating tables:", error);
   } finally {
-    await pool.end();
+    
   }
 }

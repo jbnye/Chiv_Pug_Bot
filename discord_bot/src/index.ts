@@ -82,9 +82,9 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
       const command = client.commands.get(interaction.commandName);
       if (!command) return;
 
-      if (!interaction.deferred && !interaction.replied) {
-        await interaction.deferReply(); 
-      }
+      // if (!interaction.deferred && !interaction.replied) {
+      //   await interaction.deferReply(); 
+      // }
 
       await command.execute(interaction as ChatInputCommandInteraction);
       return;

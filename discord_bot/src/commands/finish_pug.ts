@@ -74,6 +74,7 @@ export default {
       await interaction.reply({
         content: "Select the PUG you'd like to finish:",
         components: [row],
+        flags: 64,
       });
     } catch (error) {
       console.error("Error in /finish_pug:", error);

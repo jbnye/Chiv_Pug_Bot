@@ -28,7 +28,7 @@ export default {
 
   async execute(interaction: ChatInputCommandInteraction) {
     try {
-      await interaction.deferReply({ ephemeral: false });
+      // await interaction.deferReply({ ephemeral: false });
       const guild = interaction.guild;
       if (!guild) {
         return interaction.reply({

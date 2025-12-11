@@ -9,8 +9,8 @@ import { redisClient } from "../redis";
 
 export async function handleFinishPugSelect(interaction: StringSelectMenuInteraction) {
   try {
-    await interaction.deferReply({ /*flags: 64*/ });
-
+    await interaction.deferReply({ flags: 64 });
+    // await interaction.deferUpdate();
     const selectedPugId = interaction.values[0];
     if (!selectedPugId) {
       await interaction.editReply({ content: "No PUG selected." });
@@ -43,7 +43,7 @@ export async function handleFinishPugSelect(interaction: StringSelectMenuInterac
       : "Unknown time";
 
     const embed = new EmbedBuilder()
-      .setTitle(`Finish PUG — Match #${match_id}`)
+      .setTitle(`Finish PUG - Match #${match_id}`)
       .setColor(0x64026d)
       .setDescription(
         [
