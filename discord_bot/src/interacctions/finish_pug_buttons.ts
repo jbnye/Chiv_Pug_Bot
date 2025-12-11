@@ -54,14 +54,23 @@ export async function handleFinishPugButton(interaction: ButtonInteraction) {
           const before = snap.current.shown;
           const outcome = team === winnerTeam ? snap.win : snap.loss;
 
+          const rawDelta = outcome.delta;
+
           const clampDelta = (current: number, delta: number) => {
             if (current + delta < 0) return -current; 
             return delta;
           };
 
-          const deltaNum = Number(clampDelta(before, outcome.delta)); 
+          const deltaNum = Number(clampDelta(before, rawDelta));
           const after = before + deltaNum;
-          const diff = deltaNum >= 0 ? `+${deltaNum.toFixed(2)}` : deltaNum.toFixed(2);
+
+          let diff: string;
+
+          if (rawDelta > 0) {
+            diff = `+${deltaNum.toFixed(2)}`;
+          } else {
+            diff = `-${Math.abs(deltaNum).toFixed(2)}`;
+          }
 
           return `<@${player.id}> - **${before.toFixed(2)}** → **${after.toFixed(2)}** (${diff})`;
         })

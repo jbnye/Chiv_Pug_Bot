@@ -117,20 +117,27 @@ export default {
     const captain2Name =
       usernameMap.get(team2Captain?.discord_id || "") || "Team 2";
 
-    const formatPlayer = (p:any) => {
+    const formatPlayer = (p: any, winnerTeam: 1 | 2) => {
       const name = usernameMap.get(p.discord_id) || `Unknown (${p.discord_id})`;
 
       const oldMMR = conservative(p.mu_before, p.sigma_before);
       const newMMR = conservative(p.mu_after, p.sigma_after);
       const delta = newMMR - oldMMR;
-      
-      const deltaText = delta >= 0 ? `+${delta.toFixed(2)}` : `${delta.toFixed(2)}`;
+
+      let deltaText: string;
+      if ((p.team_number === winnerTeam && delta > 0) || (p.team_number === winnerTeam && delta === 0)) {
+        // WIN → always +delta (never zero in your system, but just in case)
+        deltaText = `+${delta.toFixed(2)}`;
+      } else {
+        // LOSS → always -delta, show -0 if clamped
+        deltaText = `-${Math.abs(delta).toFixed(2)}`;
+      }
 
       return `**${name}** - ${oldMMR} → ${newMMR} (${deltaText})`;
     };
 
-    const team1List = team1.map(formatPlayer).join("\n");
-    const team2List = team2.map(formatPlayer).join("\n");
+    const team1List  = team1.map(p => formatPlayer(p, winnerTeam)).join("\n");
+    const team2List  = team2.map(p => formatPlayer(p, winnerTeam)).join("\n");
 
 
     const winnerTeam = pug.winner_team;

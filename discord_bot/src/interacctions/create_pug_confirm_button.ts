@@ -77,7 +77,6 @@ export async function handleConfirmCaptains(interaction: ButtonInteraction) {
       const sum = values.reduce((a, b) => a + b, 0);
       return parseFloat((sum / values.length).toFixed(2));
     };
-
     const buildTeamText = (team: any[]) =>
       team
         .map(p => {
@@ -85,16 +84,17 @@ export async function handleConfirmCaptains(interaction: ButtonInteraction) {
           if (!s) return `<@${p.id}> - *MMR unknown*`;
 
           const clampDelta = (current: number, delta: number) => {
-            if (current + delta < 0) return -current; 
+            if (current + delta < 0) return -current;
             return delta;
           };
 
-          const winDelta = clampDelta(s.current.shown, s.win.delta);
+          const winDelta  = clampDelta(s.current.shown, s.win.delta);
           const lossDelta = clampDelta(s.current.shown, s.loss.delta);
+          
+          const formatWin  = (n: number) => `+${n.toFixed(2)}`;
+          const formatLoss = (n: number) => `-${Math.abs(n).toFixed(2)}`;
 
-          const format = (n: number) => (n >= 0 ? `${n.toFixed(2)}` : n.toFixed(2));
-
-          return `<@${p.id}> - **${s.current.shown.toFixed(2)}** (Win: +${format(winDelta)} / Loss: ${format(lossDelta)})`;
+          return `<@${p.id}> - **${s.current.shown.toFixed(2)}** (Win: ${formatWin(winDelta)} / Loss: ${formatLoss(lossDelta)})`;
         })
         .join("\n");
 
