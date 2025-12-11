@@ -16,6 +16,7 @@ import {handleCancelPugSelection} from "./interacctions/cancel_pug_select_pug";
 import { createDatabase } from "./database/init_db";
 import { create } from "domain";
 const allowed_guilds = new Set(process.env.ALLOWED_GUILDS?.split(",") ?? []);
+console.log("discords: ", allowed_guilds);
 const client = new ChivClient(); 
 
 // Load commands
