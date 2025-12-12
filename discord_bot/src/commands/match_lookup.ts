@@ -126,23 +126,20 @@ export default {
 
       let deltaText: string;
       if ((p.team_number === winnerTeam && delta > 0) || (p.team_number === winnerTeam && delta === 0)) {
-        // WIN → always +delta (never zero in your system, but just in case)
         deltaText = `+${delta.toFixed(2)}`;
       } else {
-        // LOSS → always -delta, show -0 if clamped
         deltaText = `-${Math.abs(delta).toFixed(2)}`;
       }
 
       return `**${name}** - ${oldMMR} → ${newMMR} (${deltaText})`;
     };
 
-    const team1List  = team1.map(p => formatPlayer(p, winnerTeam)).join("\n");
-    const team2List  = team2.map(p => formatPlayer(p, winnerTeam)).join("\n");
-
-
     const winnerTeam = pug.winner_team;
     const winningCaptain =
       winnerTeam === 1 ? captain1Name : captain2Name;
+      
+    const team1List  = team1.map(p => formatPlayer(p, winnerTeam)).join("\n");
+    const team2List  = team2.map(p => formatPlayer(p, winnerTeam)).join("\n");
 
     console.log("Winner team:", winnerTeam);
 
