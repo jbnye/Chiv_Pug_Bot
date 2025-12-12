@@ -70,6 +70,7 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
       if (interaction.commandName === "create_pug") {
         const focused = interaction.options.getFocused().toLowerCase();
         const members = await interaction.guild!.members.fetch();
+        console.log("Number of members in guild: ", members.size);
         const filtered = members
           .filter((m) => m.user.username.toLowerCase().includes(focused)) 
           .first(25)
