@@ -17,31 +17,24 @@ const commands: RESTPostAPIApplicationCommandsJSONBody[] = [];
 
 (async () => {
   const commandsPath = path.join(__dirname, "commands");
-  const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith(".ts") || file.endsWith(".js")) ;
+  const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith(".ts") || file.endsWith(".js"));
 
   for (const file of commandFiles) {
     const commandModule = await import(path.join(commandsPath, file));
     const command = commandModule.default || Object.values(commandModule)[0];
-    
     client.commands.set(command.data.name, command);
     commands.push(command.data.toJSON());
   }
-})().then(async () => {
-  const rest = new REST().setToken(token);
 
+  const rest = new REST().setToken(token);
   try {
     console.log(`Started refreshing ${commands.length} application (/) commands.`);
-    for (const guildId of allowedGuilds) {
-      if (!guildId) continue;
-
-      const data: any = await rest.put(
-        Routes.applicationGuildCommands(clientId, guildId),
-        { body: commands }
-      );
-
-      console.log(`Commands deployed to guild ${guildId} (${data.length} cmds)`);
-    }
+    const data: any = await rest.put(
+      Routes.applicationCommands(clientId),
+      { body: commands }
+    );
+    console.log(`Deployed ${data.length} global commands.`);
   } catch (error) {
     console.error("Error reloading commands:", error);
   }
-});
+})();
