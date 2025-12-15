@@ -28,12 +28,18 @@ const commands: RESTPostAPIApplicationCommandsJSONBody[] = [];
 
   const rest = new REST().setToken(token);
   try {
-    console.log(`Started refreshing ${commands.length} application (/) commands.`);
-    const data: any = await rest.put(
-      Routes.applicationCommands(clientId),
-      { body: commands }
-    );
-    console.log(`Deployed ${data.length} global commands.`);
+    console.log(`Started refreshing ${commands.length} application (/) commands`);
+    // const data: any = await rest.put(
+    //   Routes.applicationCommands(clientId),
+    //   // Routes.applicationGuildCommands(clientId, guildId)
+    //   { body: commands }
+    // );
+    // console.log(`Deployed ${data.length} global commands.`);
+
+    for (const guildId of allowedGuilds) {
+      if (!guildId) continue;
+        const data: any = await rest.put( Routes.applicationGuildCommands(clientId, guildId), { body: commands } );
+        console.log(`Commands deployed to guild ${guildId} (${data.length} cmds)`); }
   } catch (error) {
     console.error("Error reloading commands:", error);
   }
