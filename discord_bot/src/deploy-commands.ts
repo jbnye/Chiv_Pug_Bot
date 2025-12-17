@@ -35,6 +35,11 @@ const commands: RESTPostAPIApplicationCommandsJSONBody[] = [];
     //   { body: commands }
     // );
     // console.log(`Deployed ${data.length} global commands.`);
+    //     await rest.put(
+    //   Routes.applicationCommands(clientId),
+    //   { body: [] }
+    // );
+    // console.log("Cleared all global commands");
 
     for (const guildId of allowedGuilds) {
       if (!guildId) continue;
