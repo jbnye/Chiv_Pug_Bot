@@ -1,6 +1,7 @@
 import { ButtonInteraction, EmbedBuilder } from "discord.js";
 import { finish_pug_backend } from "../utils/finish_pug_backend";
 import { redisClient } from "../redis";
+import {PlayerSnapshot} from "../types/snapshots"
 
 export async function handleFinishPugButton(interaction: ButtonInteraction) {
   try {
@@ -38,10 +39,26 @@ export async function handleFinishPugButton(interaction: ButtonInteraction) {
 
     const pug = JSON.parse(stored);
 
-    const playerSnapshots = pug.playerSnapshots;
+    const playerSnapshots: PlayerSnapshot[] = pug.playerSnapshots;
     const winnerCaptain =
       winnerTeam === 1 ? pug.captain1.username : pug.captain2.username;
 
+    const findStake = (id: string) =>
+      playerSnapshots.find((p: PlayerSnapshot) => p.id === id);
+
+    const avgTeamMMR = (team: any[]): number => {
+      // const values: number[] = team
+      //   .map(p => findStake(p.id)?.current.shown)
+      //   .filter((n): n is number => typeof n === "number");
+      const values: number[] = team
+        .map(p => findStake(p.id)?.current.mu)
+        .filter((n): n is number => typeof n === "number");
+
+      if (values.length === 0) return 0;
+
+      const sum = values.reduce((a, b) => a + b, 0);
+      return parseFloat((sum / values.length).toFixed(2));
+    };
 
     const buildTeamField = (team: 1 | 2) => {
       const teamPlayers = team === 1 ? pug.team1 : pug.team2;
@@ -50,29 +67,40 @@ export async function handleFinishPugButton(interaction: ButtonInteraction) {
         .map((player: any) => {
           const snap = playerSnapshots.find((ps: any) => ps.id === player.id);
           if (!snap) return `${player.username} - _MMR unknown_`;
-
-          const before = snap.current.shown;
+          const before = snap.current.mu;
           const outcome = team === winnerTeam ? snap.win : snap.loss;
+          const after = outcome.mu;
 
-          const rawDelta = outcome.delta;
+          const delta = after - before;
 
-          const clampDelta = (current: number, delta: number) => {
-            if (current + delta < 0) return -current; 
-            return delta;
-          };
-
-          const deltaNum = Number(clampDelta(before, rawDelta));
-          const after = before + deltaNum;
-
-          let diff: string;
-
-          if (rawDelta > 0) {
-            diff = `+${deltaNum.toFixed(2)}`;
-          } else {
-            diff = `-${Math.abs(deltaNum).toFixed(2)}`;
-          }
+          const diff =
+            delta >= 0
+              ? `+${delta.toFixed(2)}`
+              : `-${Math.abs(delta).toFixed(2)}`;
 
           return `<@${player.id}> - **${before.toFixed(2)}** → **${after.toFixed(2)}** (${diff})`;
+
+          // const before = snap.current.shown;
+          // const outcome = team === winnerTeam ? snap.win : snap.loss;
+
+          // const rawDelta = outcome.delta;
+
+          // const clampDelta = (current: number, delta: number) => {
+          //   if (current + delta < 0) return -current; 
+          //   return delta;
+          // };
+          // const deltaNum = Number(clampDelta(before, rawDelta));
+          // const after = before + deltaNum;
+
+          // let diff: string;
+
+          // if (rawDelta > 0) {
+          //   diff = `+${deltaNum.toFixed(2)}`;
+          // } else {
+          //   diff = `-${Math.abs(deltaNum).toFixed(2)}`;
+          // }
+
+          // return `<@${player.id}> - **${before.toFixed(2)}** → **${after.toFixed(2)}** (${diff})`;
         })
         .join("\n");
     };
@@ -83,11 +111,11 @@ export async function handleFinishPugButton(interaction: ButtonInteraction) {
       .setColor(0x64026d)
       .addFields(
         {
-          name: `${pug.captain1.username}'s Team`,
+          name: `${pug.captain1.username}'s Team - ${avgTeamMMR(pug.team1)}`,
           value: buildTeamField(1) || "_No players_",
         },
         {
-          name: `${pug.captain2.username}'s Team`,
+          name: `${pug.captain2.username}'s Team - ${avgTeamMMR(pug.team2)}`,
           value: buildTeamField(2) || "_No players_",
         }
       )

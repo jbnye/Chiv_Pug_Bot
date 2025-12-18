@@ -68,8 +68,11 @@ export async function handleConfirmCaptains(interaction: ButtonInteraction) {
       playerSnapshots.find(p => p.id === id);
 
     const avgTeamMMR = (team: any[]): number => {
+      // const values: number[] = team
+      //   .map(p => findStake(p.id)?.current.shown)
+      //   .filter((n): n is number => typeof n === "number");
       const values: number[] = team
-        .map(p => findStake(p.id)?.current.shown)
+        .map(p => findStake(p.id)?.current.mu)
         .filter((n): n is number => typeof n === "number");
 
       if (values.length === 0) return 0;
@@ -77,6 +80,7 @@ export async function handleConfirmCaptains(interaction: ButtonInteraction) {
       const sum = values.reduce((a, b) => a + b, 0);
       return parseFloat((sum / values.length).toFixed(2));
     };
+
     const buildTeamText = (team: any[]) =>
       team
         .map(p => {
@@ -88,13 +92,17 @@ export async function handleConfirmCaptains(interaction: ButtonInteraction) {
             return delta;
           };
 
-          const winDelta  = clampDelta(s.current.shown, s.win.delta);
-          const lossDelta = clampDelta(s.current.shown, s.loss.delta);
+          // const winDelta  = clampDelta(s.current.shown, s.win.delta);
+          // const lossDelta = clampDelta(s.current.shown, s.loss.delta);
           
+          const winDelta = s.win.mu - s.current.mu;
+          const lossDelta = s.loss.mu - s.current.mu;
+
           const formatWin  = (n: number) => `+${n.toFixed(2)}`;
           const formatLoss = (n: number) => `-${Math.abs(n).toFixed(2)}`;
 
-          return `<@${p.id}> - **${s.current.shown.toFixed(2)}** (Win: ${formatWin(winDelta)} / Loss: ${formatLoss(lossDelta)})`;
+          // return `<@${p.id}> - **${s.current.shown.toFixed(2)}** (Win: ${formatWin(winDelta)} / Loss: ${formatLoss(lossDelta)})`;
+          return `<@${p.id}> - **${s.current.mu.toFixed(2)}** (Win: ${formatWin(winDelta)} / Loss: ${formatLoss(lossDelta)})`;
         })
         .join("\n");
 

@@ -96,8 +96,8 @@ export default {
     console.log("Username map built:", usernameMap);
 
 
-    const conservative = (mu:any, sigma:any) =>
-      parseFloat(Math.max(mu - 3 * sigma, 0).toFixed(2));
+    // const conservative = (mu:any, sigma:any) =>
+    //   parseFloat(Math.max(mu - 3 * sigma, 0).toFixed(2));
 
 
     const team1 = mmrRows.filter((p) => p.team_number === 1);
@@ -109,8 +109,8 @@ export default {
     const team1Captain = team1.find((p) => p.discord_id === pug.captain1_id);
     const team2Captain = team2.find((p) => p.discord_id === pug.captain2_id);
 
-    console.log("Detected Team 1 Captain:", team1Captain);
-    console.log("Detected Team 2 Captain:", team2Captain);
+    console.log("Team 1 Captain:", team1Captain);
+    console.log("Team 2 Captain:", team2Captain);
 
     const captain1Name =
       usernameMap.get(team1Captain?.discord_id || "") || "Team 1";
@@ -120,8 +120,10 @@ export default {
     const formatPlayer = (p: any, winnerTeam: 1 | 2) => {
       const name = usernameMap.get(p.discord_id) || `Unknown (${p.discord_id})`;
 
-      const oldMMR = conservative(p.mu_before, p.sigma_before);
-      const newMMR = conservative(p.mu_after, p.sigma_after);
+      // const oldMMR = conservative(p.mu_before, p.sigma_before);
+      // const newMMR = conservative(p.mu_after, p.sigma_after);
+      const oldMMR = p.mu_before;
+      const newMMR = p.mu_after;
       const delta = newMMR - oldMMR;
 
       let deltaText: string;
@@ -140,6 +142,16 @@ export default {
       
     const team1List  = team1.map(p => formatPlayer(p, winnerTeam)).join("\n");
     const team2List  = team2.map(p => formatPlayer(p, winnerTeam)).join("\n");
+
+    const avgTeamMMR = (team: { mu_before: number }[]): number => {
+      if (team.length === 0) return 0;
+
+      const sum = team.reduce((acc, p) => acc + p.mu_before, 0);
+      return parseFloat((sum / team.length).toFixed(2));
+    };
+    
+    const team1AvgMMR = avgTeamMMR(team1);
+    const team2AvgMMR = avgTeamMMR(team2);
 
     console.log("Winner team:", winnerTeam);
 
@@ -161,11 +173,11 @@ export default {
       .setColor(0x64026d)
       .addFields(
         {
-          name: `${captain1Name}'s Team`,
+          name: `${captain1Name}'s Team  - ${team1AvgMMR }`,
           value: team1List || "_No players?_",
         },
         {
-          name: `${captain2Name}'s Team`,
+          name: `${captain2Name}'s Team  - ${team2AvgMMR}`,
           value: team2List || "_No players?_",
         }
       )

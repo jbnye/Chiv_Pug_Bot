@@ -32,7 +32,7 @@ export default {
         losses,
         captain_wins,
         captain_losses,
-        GREATEST((mu - 3 * sigma), 0) AS conservative_mmr
+        ROUND(mu::numeric, 2) AS mmr
       FROM players
       WHERE discord_id = $1;
     `;
@@ -50,7 +50,7 @@ export default {
 
     const rankQuery = `
       SELECT discord_id,
-            RANK() OVER (ORDER BY GREATEST((mu - 3*sigma), 0) DESC) AS rank,
+            RANK() OVER (ORDER BY mu DESC) AS rank
             COUNT(*) OVER() AS total_players
       FROM players;
     `;
@@ -73,7 +73,8 @@ export default {
     const matchesQuery = `
       SELECT 
           mh.pug_token,
-          mh.mmr_change,
+          mh.mu_before,
+          mh.mu_after,
           mh.team_number,
           mh.won,
           p.pug_id,
@@ -100,22 +101,18 @@ export default {
       matchRows.length > 0
         ? matchRows
             .map((m) => {
-              const before = Number(p.conservative_mmr); 
-              let after = before + m.mmr_change;
+              const before = m.mu_before;
+              const after = m.mu_after;
+              const delta = after - before;
 
-              if (after < 0) after = 0;
-
-              let deltaText: string;
-              if (m.won) {
-                deltaText = `+${Math.max(m.mmr_change, 0).toFixed(2)}`;
-              } else {
-                const rawDelta = before - after; 
-                deltaText = `-${rawDelta.toFixed(2)}`;
-              }
+              const deltaText =
+                delta >= 0
+                  ? `+${delta.toFixed(2)}`
+                  : `-${Math.abs(delta).toFixed(2)}`;
 
               const result = m.won ? "W" : "L";
 
-              return `${result}: Match #${m.pug_id}: ${m.captain1_username} vs ${m.captain2_username}: (${deltaText})`;
+              return `${result}: Match #${m.pug_id}: ${m.captain1_username} vs ${m.captain2_username} (${deltaText})`;
             })
             .join("\n")
         : "_No recent matches found._";
@@ -129,9 +126,8 @@ export default {
       .addFields(
         {
           name: "Elo Overview",
-          value: `**Rating:** **${Number(p.conservative_mmr).toFixed(2)}** (${rankText})\n**TrueSkill:** μ=${p.mu.toFixed(
-            2
-          )}, σ=${p.sigma.toFixed(2)}`,
+          value: `**Rating (μ):** **${p.mmr.toFixed(2)}** (${rankText})\n**TrueSkill:** μ=${p.mu.toFixed(2)},
+           σ=${p.sigma.toFixed(2)}`,
           inline: false,
         },
         {

@@ -37,18 +37,18 @@ export default {
         ? "wins"
         : sortBy === "captain_wins"
         ? "captain_wins"
-        : "(mu - 3 * sigma)";
+        : "mu";
 
     const fetchLeaderboardPage = async (page: number) => {
       const offset = (page - 1) * limit;
-      const query = `
-        SELECT 
-          discord_username, mu, sigma, wins, losses, captain_wins, captain_losses,
-          ROUND(GREATEST((mu - 3 * sigma), 0)::numeric, 2) AS conservative_mmr
-        FROM players
-        ORDER BY ${sortColumn} DESC
-        LIMIT $1 OFFSET $2;
-      `;
+    const query = `
+      SELECT 
+        discord_username,mu,wins,losses,captain_wins,captain_losses,
+        ROUND(mu::numeric, 2) AS mmr
+      FROM players
+      ORDER BY ${sortColumn} DESC
+      LIMIT $1 OFFSET $2;
+    `;
       const { rows } = await pool.query(query, [limit, offset]);
       return rows;
     };
@@ -66,7 +66,7 @@ export default {
             //(μ=${row.mu.toFixed(1)}, σ=${row.sigma.toFixed(1)}) 
 
             if (sortBy === "mmr") {
-              return `**${rank}.** ${username}: **${row.conservative_mmr}** | ${wins}W - ${losses}L`;
+              return `**${rank}.** ${username}: **${row.mmr}** | ${wins}W - ${losses}L`;
             } else if (sortBy === "wins") {
               return `**${rank}.** ${username}: ${wins}W - ${losses}L`;
             } else {
@@ -76,7 +76,7 @@ export default {
           .join("\n") || "_No players found._";
 
       const titleMap = {
-        mmr: "Elo",
+        mmr: "Rating (μ)",
         wins: "Wins",
         captain_wins: "Captain Record",
       };
