@@ -31,8 +31,7 @@ export default {
         wins,
         losses,
         captain_wins,
-        captain_losses,
-        ROUND(mu::double precision, 2) AS mmr
+        captain_losses
       FROM players
       WHERE discord_id = $1;
     `;
@@ -117,7 +116,8 @@ export default {
             .join("\n")
         : "_No recent matches found._";
 
-
+    const mu = Number(p.mu);
+    const sigma = Number(p.sigma);
     const embed = new EmbedBuilder()
       .setTitle(`${medal} **${p.discord_username || user.username}**`)
       .setColor(0x64026d)
@@ -126,8 +126,7 @@ export default {
       .addFields(
         {
           name: "Elo Overview",
-          value: `**Rating (μ):** **${p.mmr.toFixed(2)}** (${rankText})\n**TrueSkill:** μ=${p.mu.toFixed(2)},
-           σ=${p.sigma.toFixed(2)}`,
+          value: `**Rating (μ):** **${mu.toFixed(2)}** (${rankText}) **TrueSkill:** μ=${mu.toFixed(2)}, σ=${sigma.toFixed(2)}`,
           inline: false,
         },
         {
