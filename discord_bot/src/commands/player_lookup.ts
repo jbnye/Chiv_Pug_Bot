@@ -32,7 +32,7 @@ export default {
         losses,
         captain_wins,
         captain_losses,
-        ROUND(mu::numeric, 2) AS mmr
+        ROUND(mu::double precision, 2) AS mmr
       FROM players
       WHERE discord_id = $1;
     `;
