@@ -50,7 +50,7 @@ export default {
 
     const rankQuery = `
       SELECT discord_id,
-            RANK() OVER (ORDER BY mu DESC) AS rank
+            RANK() OVER (ORDER BY mu DESC) AS rank,
             COUNT(*) OVER() AS total_players
       FROM players;
     `;
