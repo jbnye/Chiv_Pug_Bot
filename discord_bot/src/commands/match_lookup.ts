@@ -133,7 +133,7 @@ export default {
         deltaText = `-${Math.abs(delta).toFixed(2)}`;
       }
 
-      return `**${name}** - ${oldMMR} → ${newMMR} (${deltaText})`;
+      return `**${name}** - ${oldMMR} → ${newMMR.toFixed(2)} (${deltaText})`;
     };
 
     const winnerTeam = pug.winner_team;
